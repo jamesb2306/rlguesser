@@ -6,57 +6,67 @@ export default function Navbar() {
   const navigate = useNavigate()
 
   return (
-    <header className="relative z-50 border-b border-mud/10">
-      {/* Vintage stripe top bar */}
-      <div className="h-1.5 w-full" style={{
-        background: 'repeating-linear-gradient(90deg, #c41e3a 0px, #c41e3a 24px, #f5a623 24px, #f5a623 48px, #0a1a0f 48px, #0a1a0f 72px)'
+    <header className="relative z-50">
+      {/* Top colour stripe — classic RL programme hoops */}
+      <div className="h-2 w-full" style={{
+        background: 'repeating-linear-gradient(90deg, #c41e3a 0px, #c41e3a 32px, #f7f2e8 32px, #f7f2e8 40px, #1a2340 40px, #1a2340 72px, #f7f2e8 72px, #f7f2e8 80px)'
       }} />
 
-      <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-1 group">
-          <span className="font-display font-black text-2xl tracking-tight">
-            <span className="text-chalk">RL</span>
-            <span className="text-mud">GUESSER</span>
-          </span>
-        </Link>
+      {/* Main navbar */}
+      <div style={{ background: '#1a2340', borderBottom: '3px solid #c8a96e' }}>
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
 
-        {/* Right side */}
-        <nav className="flex items-center gap-2">
-          <Link to="/leaderboard" className="btn-ghost text-xs hidden sm:inline-flex">
-            Leaderboard
+          {/* Logo */}
+          <Link to="/" className="flex items-center">
+            <span style={{
+              fontFamily: '"Bebas Neue", serif',
+              fontSize: '1.8rem',
+              letterSpacing: '0.08em',
+              lineHeight: 1,
+            }}>
+              <span style={{ color: '#f7f2e8' }}>RL</span>
+              <span style={{ color: '#c41e3a' }}>GUESSER</span>
+            </span>
           </Link>
 
-          {user ? (
-            <>
-              {isPro && (
-                <Link to="/archive" className="btn-ghost text-xs hidden sm:inline-flex">
-                  Archive
+          {/* Nav items */}
+          <nav className="flex items-center gap-2">
+            <Link to="/leaderboard" className="btn-ghost text-xs hidden sm:inline-flex"
+              style={{ color: 'rgba(247,242,232,0.6)', borderColor: 'rgba(247,242,232,0.15)' }}>
+              Leaderboard
+            </Link>
+
+            {user ? (
+              <>
+                {isPro && (
+                  <Link to="/archive" className="btn-ghost text-xs hidden sm:inline-flex"
+                    style={{ color: 'rgba(247,242,232,0.6)', borderColor: 'rgba(247,242,232,0.15)' }}>
+                    Archive
+                  </Link>
+                )}
+                <Link to="/profile" className="btn-ghost text-xs"
+                  style={{ color: 'rgba(247,242,232,0.6)', borderColor: 'rgba(247,242,232,0.15)' }}>
+                  {profile?.username ?? user.email?.split('@')[0]}
                 </Link>
-              )}
-              <Link to="/profile" className="btn-ghost text-xs">
-                {profile?.username ?? user.email?.split('@')[0]}
-              </Link>
-              {isPro && (
-                <span className="badge-pro">
-                  <span>★</span> PRO
-                </span>
-              )}
-              <button onClick={signOut} className="btn-ghost text-xs">
-                Sign out
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => navigate('/auth')} className="btn-ghost text-xs">
-                Sign in
-              </button>
-              <button onClick={() => navigate('/pricing')} className="btn-brass text-xs">
-                Go Pro
-              </button>
-            </>
-          )}
-        </nav>
+                {isPro && <span className="badge-pro">★ PRO</span>}
+                <button onClick={signOut} className="btn-ghost text-xs"
+                  style={{ color: 'rgba(247,242,232,0.5)', borderColor: 'rgba(247,242,232,0.12)' }}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => navigate('/auth')} className="btn-ghost text-xs"
+                  style={{ color: 'rgba(247,242,232,0.6)', borderColor: 'rgba(247,242,232,0.15)' }}>
+                  Sign in
+                </button>
+                <button onClick={() => navigate('/pricing')} className="btn-brass text-xs">
+                  Go Pro
+                </button>
+              </>
+            )}
+          </nav>
+        </div>
       </div>
     </header>
   )

@@ -4,7 +4,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['"Playfair Display"', 'Georgia', 'serif'],
+        display: ['"Bebas Neue"', '"Playfair Display"', 'Georgia', 'serif'],
+        heading: ['"Playfair Display"', 'Georgia', 'serif'],
         body:    ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
         mono:    ['"IBM Plex Mono"', 'monospace'],
       },

@@ -2,167 +2,240 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 @layer base {
   :root {
-    --pitch:   #0a1a0f;
-    --mud:     #c8a96e;
-    --chalk:   #f5f0e8;
+    --paper:   #f2ede3;
+    --ink:     #1a0e08;
     --scarlet: #c41e3a;
-    --amber:   #f5a623;
+    --cream:   #f7f2e8;
+    --gold:    #c8a96e;
+    --navy:    #1a2340;
   }
 
-  * {
-    box-sizing: border-box;
-  }
-
-  html {
-    scroll-behavior: smooth;
-  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
 
   body {
-    @apply bg-pitch text-chalk font-body antialiased;
-    background-image:
-      radial-gradient(ellipse at 20% 0%, rgba(200,169,110,0.07) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 100%, rgba(196,30,58,0.05) 0%, transparent 50%);
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
     min-height: 100vh;
+    /* Subtle paper grain */
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeBlend in='SourceGraphic' mode='multiply'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23g)' opacity='0.12'/%3E%3C/svg%3E");
   }
 
-  /* Scanline texture overlay */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background-image: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
     pointer-events: none;
     z-index: 9999;
   }
 
   h1, h2, h3, h4 {
-    @apply font-display;
+    font-family: "Playfair Display", Georgia, serif;
+    color: var(--ink);
   }
 
   ::selection {
-    background: rgba(200,169,110,0.3);
-    color: var(--chalk);
+    background: rgba(196,30,58,0.18);
+    color: var(--ink);
   }
 }
 
 @layer components {
-  /* ── Vintage card base ── */
-  .card-base {
-    @apply relative rounded-lg overflow-hidden;
-    background: linear-gradient(145deg, #1a2e1f 0%, #0d1f12 100%);
-    border: 1px solid rgba(200,169,110,0.15);
-    box-shadow: 4px 6px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* ── Panini-style player card ── */
+  .card-panini {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--scarlet);
+    /* Multi-layer border like the sticker card */
+    box-shadow:
+      0 0 0 3px #1a2340,
+      0 0 0 6px #c8a96e,
+      0 0 0 8px #1a2340,
+      6px 10px 32px rgba(26,14,8,0.35);
   }
 
-  /* ── Brass-style button ── */
+  /* ── General card (for UI panels) ── */
+  .card-base {
+    @apply relative rounded-lg overflow-hidden;
+    background: var(--cream);
+    border: 2px solid var(--navy);
+    box-shadow: 3px 4px 0 var(--navy);
+  }
+
+  /* ── Primary button — bold scarlet ── */
   .btn-brass {
-    @apply relative inline-flex items-center justify-center gap-2 px-5 py-2.5 font-body font-medium text-sm tracking-wide rounded transition-all duration-200;
-    background: linear-gradient(135deg, #c8a96e 0%, #a07840 100%);
-    color: #0a1a0f;
-    border: 1px solid rgba(200,169,110,0.4);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+    @apply relative inline-flex items-center justify-center gap-2 px-6 py-2.5 text-sm tracking-widest uppercase rounded transition-all duration-150 text-white;
+    font-family: "Bebas Neue", "Playfair Display", serif;
+    font-size: 0.9rem;
+    letter-spacing: 0.12em;
+    background: var(--scarlet);
+    border: 2px solid var(--navy);
+    box-shadow: 3px 3px 0 var(--navy);
   }
   .btn-brass:hover {
-    background: linear-gradient(135deg, #d4b87a 0%, #b08848 100%);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
-    transform: translateY(-1px);
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--navy);
   }
   .btn-brass:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--navy);
+  }
+  .btn-brass:disabled {
+    opacity: 0.45;
+    transform: none;
+    box-shadow: 3px 3px 0 var(--navy);
+    cursor: not-allowed;
   }
 
   /* ── Ghost button ── */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-body text-sm tracking-wide rounded transition-all duration-200;
-    color: rgba(245,240,232,0.6);
-    border: 1px solid rgba(245,240,232,0.12);
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm tracking-wide rounded transition-all duration-150;
+    color: rgba(26,14,8,0.5);
+    border: 1.5px solid rgba(26,14,8,0.18);
+    background: transparent;
   }
   .btn-ghost:hover {
-    color: var(--chalk);
-    border-color: rgba(200,169,110,0.3);
-    background: rgba(200,169,110,0.06);
+    color: var(--ink);
+    border-color: var(--scarlet);
+    background: rgba(196,30,58,0.05);
   }
 
-  /* ── Scarlet accent button ── */
+  /* ── Scarlet button ── */
   .btn-scarlet {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 font-body font-medium text-sm tracking-wide rounded transition-all duration-200 text-chalk;
-    background: linear-gradient(135deg, #c41e3a 0%, #9a1528 100%);
-    border: 1px solid rgba(196,30,58,0.4);
-    box-shadow: 0 2px 8px rgba(196,30,58,0.25);
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm tracking-widest uppercase rounded transition-all duration-150 text-white;
+    font-family: "Bebas Neue", serif;
+    letter-spacing: 0.1em;
+    background: var(--scarlet);
+    border: 2px solid var(--navy);
+    box-shadow: 3px 3px 0 var(--navy);
   }
   .btn-scarlet:hover {
-    background: linear-gradient(135deg, #d42040 0%, #aa1a2e 100%);
-    box-shadow: 0 4px 14px rgba(196,30,58,0.35);
-    transform: translateY(-1px);
+    transform: translate(-1px,-1px);
+    box-shadow: 4px 4px 0 var(--navy);
   }
 
-  /* ── Input field ── */
+  /* ── Input ── */
   .input-vintage {
-    @apply w-full px-4 py-3 font-body text-sm rounded outline-none transition-all duration-200;
-    background: rgba(245,240,232,0.04);
-    border: 1px solid rgba(200,169,110,0.2);
-    color: var(--chalk);
-    caret-color: var(--mud);
+    @apply w-full px-4 py-3 text-sm rounded outline-none transition-all duration-150;
+    font-family: "IBM Plex Sans", sans-serif;
+    background: rgba(255,255,255,0.7);
+    border: 2px solid rgba(26,14,8,0.2);
+    color: var(--ink);
+    caret-color: var(--scarlet);
   }
-  .input-vintage::placeholder {
-    color: rgba(245,240,232,0.3);
-  }
+  .input-vintage::placeholder { color: rgba(26,14,8,0.35); }
   .input-vintage:focus {
-    border-color: rgba(200,169,110,0.5);
-    background: rgba(245,240,232,0.06);
-    box-shadow: 0 0 0 3px rgba(200,169,110,0.08);
+    border-color: var(--scarlet);
+    background: rgba(255,255,255,0.95);
+    box-shadow: 3px 3px 0 rgba(196,30,58,0.15);
   }
 
-  /* ── Clue tab ── */
+  /* ── Clue tabs — bold outlined style ── */
   .clue-tab {
-    @apply px-4 py-2 text-xs font-medium tracking-widest uppercase transition-all duration-200 rounded-sm cursor-pointer select-none;
-    color: rgba(245,240,232,0.4);
-    border: 1px solid rgba(245,240,232,0.08);
+    @apply px-4 py-2 text-xs tracking-widest uppercase transition-all duration-150 rounded cursor-pointer select-none font-medium;
+    font-family: "Bebas Neue", serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    color: rgba(26,14,8,0.4);
+    border: 2px solid rgba(26,14,8,0.15);
+    background: transparent;
   }
   .clue-tab.active {
-    color: #0a1a0f;
-    background: linear-gradient(135deg, #c8a96e, #a07840);
-    border-color: transparent;
+    color: white;
+    background: var(--scarlet);
+    border-color: var(--navy);
+    box-shadow: 2px 2px 0 var(--navy);
   }
   .clue-tab.unlocked {
-    color: rgba(200,169,110,0.8);
-    border-color: rgba(200,169,110,0.25);
+    color: var(--navy);
+    border-color: var(--navy);
+    background: rgba(26,35,64,0.06);
   }
   .clue-tab.locked {
-    opacity: 0.35;
+    opacity: 0.3;
     cursor: not-allowed;
   }
 
   /* ── Progress pip ── */
   .pip {
-    @apply h-1.5 rounded-full transition-all duration-500;
-    background: rgba(245,240,232,0.15);
+    height: 6px;
+    border-radius: 2px;
     flex: 1;
+    background: rgba(26,14,8,0.12);
+    transition: all 0.4s;
   }
-  .pip.correct { background: #22c55e; }
-  .pip.wrong   { background: #c41e3a; }
-  .pip.active  { background: var(--mud); animation: shimmer 2s ease-in-out infinite; }
+  .pip.correct { background: #16a34a; }
+  .pip.wrong   { background: var(--scarlet); }
+  .pip.active  { background: var(--navy); }
 
-  /* ── Badge ── */
+  /* ── Pro badge ── */
   .badge-pro {
     @apply inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium tracking-wide rounded;
-    background: linear-gradient(135deg, #c8a96e, #a07840);
-    color: #0a1a0f;
+    font-family: "Bebas Neue", serif;
+    letter-spacing: 0.08em;
+    background: var(--scarlet);
+    color: white;
+    border: 1.5px solid var(--navy);
+  }
+
+  /* ── Sticker name plate (used at bottom of player card) ── */
+  .name-plate {
+    font-family: "Bebas Neue", serif;
+    font-size: 2.2rem;
+    letter-spacing: 0.06em;
+    color: var(--cream);
+    text-shadow:
+      2px 2px 0 var(--navy),
+      -1px -1px 0 var(--navy),
+      1px -1px 0 var(--navy),
+      -1px 1px 0 var(--navy);
+    line-height: 1;
   }
 
   /* ── Scrollbar ── */
   ::-webkit-scrollbar       { width: 6px; }
-  ::-webkit-scrollbar-track { background: rgba(245,240,232,0.03); }
-  ::-webkit-scrollbar-thumb { background: rgba(200,169,110,0.2); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(200,169,110,0.35); }
+  ::-webkit-scrollbar-track { background: rgba(26,14,8,0.05); }
+  ::-webkit-scrollbar-thumb { background: rgba(26,14,8,0.2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(196,30,58,0.4); }
 }
+
+/* ── Animations ── */
+@keyframes deal {
+  0%   { opacity: 0; transform: translateY(-16px) rotate(-1.5deg); }
+  100% { opacity: 1; transform: translateY(0) rotate(0deg); }
+}
+@keyframes reveal {
+  0%   { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%     { transform: translateX(-5px); }
+  40%     { transform: translateX(5px); }
+  60%     { transform: translateX(-3px); }
+  80%     { transform: translateX(3px); }
+}
+@keyframes shimmer {
+  0%,100% { opacity: 0.6; }
+  50%     { opacity: 1; }
+}
+@keyframes scorePop {
+  0%   { opacity: 0; transform: scale(0.5) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-deal    { animation: deal 0.4s cubic-bezier(0.22,1,0.36,1) forwards; }
+.animate-reveal  { animation: reveal 0.4s cubic-bezier(0.22,1,0.36,1) forwards; }
+.animate-shake   { animation: shake 0.35s ease-in-out; }
+.animate-shimmer { animation: shimmer 2s ease-in-out infinite; }
+.animate-score-pop { animation: scorePop 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards; }
