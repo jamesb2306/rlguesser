@@ -68,32 +68,32 @@ function parseWikiInput(input) {
   return { type: 'search', value: input }
 }
 
-// Parse career clubs using Wikipedia action=parse API (CORS-friendly)
-// Returns rendered HTML tables which we then parse with DOMParser
+// Scrape career clubs by fetching Wikipedia via a CORS proxy
+// Uses allorigins.win as a simple proxy to get the full rendered HTML
 async function scrapeCareerClubs(pageTitle) {
   try {
-    // Use action=parse to get rendered HTML — works cross-origin
-    // redirects=true ensures we follow redirect pages automatically
-    const res = await fetch(
-      `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&format=json&origin=*&redirects=true`
-    )
+    const wikiUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}`
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(wikiUrl)}`
+    
+    const res  = await fetch(proxyUrl)
     const data = await res.json()
-    const html = data?.parse?.text?.['*']
+    const html = data.contents
     if (!html) return []
 
     const parser = new DOMParser()
     const doc    = parser.parseFromString(html, 'text/html')
 
-    const clubs  = []
-    const seen   = new Set()
-    const repTeams = /^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook Islands|Jamaica|Lancashire|Yorkshire|Cumbria|Total|Source|Career|Club)/i
+    const clubs    = []
+    const seen     = new Set()
+    const repTeams = /^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook Islands|Jamaica|Lancashire|Yorkshire|Cumbria|Total|Source)/i
 
+    // Wikipedia career stats tables have class wikitable
     const tables = doc.querySelectorAll('table.wikitable')
     for (const table of tables) {
       const rows = table.querySelectorAll('tr')
       if (rows.length < 2) continue
 
-      // Find header row — may not be first row
+      // Find header row
       let headerRow = null
       let headerIdx = 0
       for (let i = 0; i < Math.min(3, rows.length); i++) {
@@ -102,11 +102,10 @@ async function scrapeCareerClubs(pageTitle) {
       }
       if (!headerRow) continue
 
-      const headers  = [...headerRow.querySelectorAll('th')].map(th => th.textContent.trim().toLowerCase())
-      const yearCol  = headers.findIndex(h => h.includes('year') || h.includes('season'))
-      const teamCol  = headers.findIndex(h => h.includes('team') || h.includes('club'))
-      // Pld is the games played column in RL Wikipedia tables
-      const appsCol  = headers.findIndex(h => h === 'pld' || h === 'apps' || h === 'gp' || h === 'app')
+      const headers = [...headerRow.querySelectorAll('th')].map(th => th.textContent.trim().toLowerCase())
+      const yearCol = headers.findIndex(h => h.includes('year') || h.includes('season'))
+      const teamCol = headers.findIndex(h => h.includes('team') || h.includes('club'))
+      const appsCol = headers.findIndex(h => h === 'pld' || h === 'apps' || h === 'gp' || h === 'app')
 
       if (teamCol === -1) continue
 
@@ -114,9 +113,9 @@ async function scrapeCareerClubs(pageTitle) {
         const cells = rows[i].querySelectorAll('td')
         if (cells.length < 2) continue
 
-        // Get team name — strip footnotes and loan markers
         const teamCell = teamCol < cells.length ? cells[teamCol] : null
         if (!teamCell) continue
+
         const name = teamCell.textContent
           .replace(/\[.*?\]/g, '')
           .replace(/\(loan\)/gi, '')
@@ -124,15 +123,11 @@ async function scrapeCareerClubs(pageTitle) {
           .trim()
 
         const yearCell = yearCol >= 0 && yearCol < cells.length ? cells[yearCol] : null
-        const years    = yearCell ? yearCell.textContent.replace(/\[.*?\]/g,'').trim() : ''
+        const years    = yearCell ? yearCell.textContent.replace(/\[.*?\]/g, '').trim() : ''
 
-        // Apps: prefer explicit apps col, otherwise use Pld
         let apps = ''
         if (appsCol >= 0 && appsCol < cells.length) {
           apps = cells[appsCol].textContent.replace(/[^\d]/g, '')
-        } else if (cells.length > teamCol + 1) {
-          // Try the cell right after team col
-          apps = cells[teamCol + 1].textContent.replace(/[^\d]/g, '')
         }
 
         if (!name || name.length < 2 || name.length > 80) continue
