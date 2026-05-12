@@ -68,16 +68,23 @@ function parseWikiInput(input) {
   return { type: 'search', value: input }
 }
 
-// Scrape career clubs by fetching Wikipedia via a CORS proxy
-// Uses allorigins.win as a simple proxy to get the full rendered HTML
+// Parse career clubs via our own Supabase Edge Function proxy (no CORS issues)
 async function scrapeCareerClubs(pageTitle) {
   try {
-    const wikiUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}`
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(wikiUrl)}`
-    
-    const res  = await fetch(proxyUrl)
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+    const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL
+    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+    const res  = await fetch(`${supabaseUrl}/functions/v1/wiki-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnon}`,
+      },
+      body: JSON.stringify({ title: pageTitle })
+    })
     const data = await res.json()
-    const html = data.contents
+    const html = data?.parse?.text?.['*']
     if (!html) return []
 
     const parser = new DOMParser()
@@ -87,27 +94,31 @@ async function scrapeCareerClubs(pageTitle) {
     const seen     = new Set()
     const repTeams = /^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook Islands|Jamaica|Lancashire|Yorkshire|Cumbria|Total|Source)/i
 
-    // Wikipedia career stats tables have class wikitable
-    const tables = doc.querySelectorAll('table.wikitable')
+    const tables = doc.querySelectorAll('table')
     for (const table of tables) {
+      const cls = table.className || ''
+      if (cls.includes('navbox') || cls.includes('infobox')) continue
+
       const rows = table.querySelectorAll('tr')
       if (rows.length < 2) continue
 
-      // Find header row
       let headerRow = null
       let headerIdx = 0
-      for (let i = 0; i < Math.min(3, rows.length); i++) {
+      for (let i = 0; i < Math.min(4, rows.length); i++) {
         const ths = rows[i].querySelectorAll('th')
         if (ths.length >= 2) { headerRow = rows[i]; headerIdx = i; break }
       }
       if (!headerRow) continue
 
-      const headers = [...headerRow.querySelectorAll('th')].map(th => th.textContent.trim().toLowerCase())
+      const headers = [...headerRow.querySelectorAll('th')].map(th =>
+        th.textContent.replace(/\[.*?\]/g, '').trim().toLowerCase()
+      )
       const yearCol = headers.findIndex(h => h.includes('year') || h.includes('season'))
       const teamCol = headers.findIndex(h => h.includes('team') || h.includes('club'))
-      const appsCol = headers.findIndex(h => h === 'pld' || h === 'apps' || h === 'gp' || h === 'app')
+      const appsCol = headers.findIndex(h => ['pld','apps','gp','app','m'].includes(h))
 
       if (teamCol === -1) continue
+      if (yearCol === -1 && appsCol === -1) continue
 
       for (let i = headerIdx + 1; i < rows.length; i++) {
         const cells = rows[i].querySelectorAll('td')
@@ -117,10 +128,7 @@ async function scrapeCareerClubs(pageTitle) {
         if (!teamCell) continue
 
         const name = teamCell.textContent
-          .replace(/\[.*?\]/g, '')
-          .replace(/\(loan\)/gi, '')
-          .replace(/→/g, '')
-          .trim()
+          .replace(/\[.*?\]/g, '').replace(/\(loan\)/gi, '').replace(/→/g, '').trim()
 
         const yearCell = yearCol >= 0 && yearCol < cells.length ? cells[yearCol] : null
         const years    = yearCell ? yearCell.textContent.replace(/\[.*?\]/g, '').trim() : ''
@@ -128,6 +136,9 @@ async function scrapeCareerClubs(pageTitle) {
         let apps = ''
         if (appsCol >= 0 && appsCol < cells.length) {
           apps = cells[appsCol].textContent.replace(/[^\d]/g, '')
+        } else if (yearCol >= 0 && cells.length > 2) {
+          // Try the 3rd cell as apps if we have year+team+apps pattern
+          apps = cells[2].textContent.replace(/[^\d]/g, '')
         }
 
         if (!name || name.length < 2 || name.length > 80) continue
@@ -281,7 +292,7 @@ export default function Admin() {
       return m ? stripWiki(m[1]) : ''
     }
 
-    const rawName  = stripWiki(get('name') || get('full_name') || title)
+    const rawName  = stripWiki(get('name') || get('full_name') || title).replace(/\{\{[^}]*\}\}/g, '').trim()
     const rawPos   = get('position') || get('playing_position') || get('pos')
     const position = normalisePosition(rawPos)
     const rawShirt = get('number') || get('jersey_num') || get('shirt')
