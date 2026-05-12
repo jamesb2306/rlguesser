@@ -16,32 +16,103 @@ const FLAG_MAP = {
   'Tonga':'🇹🇴','Papua New Guinea':'🇵🇬','France':'🇫🇷','Wales':'🏴󠁧󠁢󠁷󠁬󠁳󠁿',
   'Scotland':'🏴󠁧󠁢󠁳󠁣󠁴󠁿','Ireland':'🇮🇪','Fiji':'🇫🇯','Lebanon':'🇱🇧',
   'Cook Islands':'🇨🇰','Jamaica':'🇯🇲','United States':'🇺🇸','Canada':'🇨🇦',
-  'Greece':'🇬🇷','Italy':'🇮🇹','Serbia':'🇷🇸','Malta':'🇲🇹',
-  'Hungary':'🇭🇺','Morocco':'🇲🇦','Brazil':'🇧🇷','South Africa':'🇿🇦',
+  'Greece':'🇬🇷','Italy':'🇮🇹','Serbia':'🇷🇸','Malta':'🇲🇹','Hungary':'🇭🇺',
+  'Morocco':'🇲🇦','Brazil':'🇧🇷','South Africa':'🇿🇦',
 }
 
+// Match position text to our dropdown values — tries first listed position
 function normalisePosition(raw) {
   if (!raw) return ''
-  const r = raw.toLowerCase()
-  if (r.includes('fullback') || r.includes('full-back')) return 'Fullback'
-  if (r.includes('winger') || r.includes('wing')) return 'Winger'
-  if (r.includes('centre') || r.includes('center')) return 'Centre'
-  if (r.includes('stand-off') || r.includes('standoff') || r.includes('five-eighth')) return 'Stand-off'
-  if (r.includes('half-back') || r.includes('halfback') || r.includes('scrum-half')) return 'Half-back'
-  if (r.includes('hooker')) return 'Hooker'
-  if (r.includes('prop') || r.includes('front row')) return 'Prop'
-  if (r.includes('second row') || r.includes('second-row')) return 'Second-row'
-  if (r.includes('loose forward') || r.includes('loose-forward') || r.includes('lock')) return 'Loose forward'
+  // Strip wiki markup
+  const clean = raw.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g,'$1').replace(/'{2,3}/g,'').replace(/<[^>]+>/g,'').replace(/\{\{[^}]+\}\}/g,'')
+  // Take the first position listed (before comma, slash, or newline)
+  const first = clean.split(/[,\/\n]/)[0].toLowerCase().trim()
+  if (first.includes('fullback') || first.includes('full-back') || first.includes('full back')) return 'Fullback'
+  if (first.includes('winger') || first.includes('wing')) return 'Winger'
+  if (first.includes('centre') || first.includes('center')) return 'Centre'
+  if (first.includes('stand-off') || first.includes('standoff') || first.includes('stand off') || first.includes('five-eighth') || first.includes('five eighth')) return 'Stand-off'
+  if (first.includes('half-back') || first.includes('halfback') || first.includes('half back') || first.includes('scrum-half') || first.includes('scrum half')) return 'Half-back'
+  if (first.includes('hooker')) return 'Hooker'
+  if (first.includes('loose forward') || first.includes('loose-forward') || first.includes('lock forward') || first.includes('lock')) return 'Loose forward'
+  if (first.includes('second row') || first.includes('second-row')) return 'Second-row'
+  if (first.includes('prop') || first.includes('front row')) return 'Prop'
+  // Try the full string if first segment didn't match
+  const full = clean.toLowerCase()
+  if (full.includes('loose forward') || full.includes('loose-forward')) return 'Loose forward'
+  if (full.includes('second row') || full.includes('second-row')) return 'Second-row'
+  if (full.includes('prop')) return 'Prop'
+  if (full.includes('hooker')) return 'Hooker'
+  if (full.includes('fullback') || full.includes('full-back')) return 'Fullback'
+  if (full.includes('winger')) return 'Winger'
+  if (full.includes('centre') || full.includes('center')) return 'Centre'
+  if (full.includes('stand-off') || full.includes('five-eighth')) return 'Stand-off'
+  if (full.includes('half-back') || full.includes('halfback')) return 'Half-back'
   return ''
 }
 
-// Extract the Wikipedia page slug from a URL or return the raw string as a search term
+function stripWiki(s) {
+  if (!s) return ''
+  return s
+    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g,'$1')
+    .replace(/\{\{[^}]+\}\}/g,'')
+    .replace(/'{2,3}/g,'')
+    .replace(/<[^>]+>/g,'')
+    .replace(/&amp;/g,'&')
+    .trim()
+}
+
 function parseWikiInput(input) {
   input = input.trim()
-  // If it's a Wikipedia URL, extract the page title
   const urlMatch = input.match(/wikipedia\.org\/wiki\/([^?#]+)/)
   if (urlMatch) return { type: 'slug', value: decodeURIComponent(urlMatch[1]) }
   return { type: 'search', value: input }
+}
+
+// Parse career club statistics from wikitext
+// Handles the common RL Wikipedia format:
+//   {| class="wikitable"
+//   ! Years !! Team !! ...
+//   |-
+//   | 1997–15 || [[Leeds Rhinos]] || 521 || ...
+function parseCareerClubs(wikitext) {
+  const clubs = []
+  const seen  = new Set()
+
+  // Find all wikitables that look like career stats
+  // Pattern: row with a year range, a linked club, and a number
+  // Matches: | 1997–15 || [[Leeds Rhinos]] || 521
+  // Also:    | [[Leeds Rhinos]] || 1997–15 || 521
+  const patterns = [
+    // Years first: | 1997–15 || [[Club]] || 521
+    /\|\s*([\d]{4}[–\-][\d]{2,4})\s*\|\|?\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|?\s*([\d]+)/g,
+    // Club first: | [[Club]] || 1997–15 || 521
+    /\|\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|?\s*([\d]{4}[–\-][\d]{2,4})\s*\|\|?\s*([\d]+)/g,
+    // Single year: | 2005 || [[Club]] || 18
+    /\|\s*([\d]{4})\s*\|\|?\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|?\s*([\d]+)/g,
+  ]
+
+  for (const rx of patterns) {
+    let m
+    while ((m = rx.exec(wikitext)) !== null) {
+      let years, name, apps
+      if (rx.source.startsWith('\\|\\s*\\[\\[')) {
+        // Club first pattern
+        name = m[1].trim(); years = m[2]; apps = m[3]
+      } else {
+        years = m[1]; name = m[2].trim(); apps = m[3]
+      }
+      // Skip non-club entries (representative teams, coaching stints etc.)
+      if (seen.has(name)) continue
+      if (/=|thumb|px|File:|Image:|Category:|Wikipedia/i.test(name)) continue
+      if (name.length < 2 || name.length > 60) continue
+      // Skip rep teams
+      if (/^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook|Jamaica|Lancashire|Yorkshire|Cumbria|Other)/.test(name)) continue
+      seen.add(name)
+      clubs.push({ name, years, appearances: apps })
+    }
+  }
+
+  return clubs
 }
 
 export default function Admin() {
@@ -49,11 +120,11 @@ export default function Admin() {
   const navigate = useNavigate()
   const isAdmin = user && ADMIN_EMAILS.includes(user.email)
 
-  const [tab, setTab] = useState('players')
+  const [tab, setTab]         = useState('players')
   const [players, setPlayers] = useState([])
-  const [search, setSearch] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState(null)
+  const [search, setSearch]   = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [msg, setMsg]         = useState(null)
 
   const [wikiInput, setWikiInput]       = useState('')
   const [wikiResults, setWikiResults]   = useState([])
@@ -64,12 +135,13 @@ export default function Admin() {
     name:'', position:'', nation:'', nation_flag:'',
     shirt_number:'', leagues:['SL'],
     clubs:[{ name:'', years:'', appearances:'' }],
-    photo_path:'',
+    photo_path:'', _wikiPhotoUrl: null,
   }
-  const [form, setForm]             = useState(emptyPlayer)
-  const [editId, setEditId]         = useState(null)
-  const [photoFile, setPhotoFile]   = useState(null)
+  const [form, setForm]                 = useState(emptyPlayer)
+  const [editId, setEditId]             = useState(null)
+  const [photoFile, setPhotoFile]       = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
+  const [wikiPhotoUrl, setWikiPhotoUrl] = useState(null)
 
   const [scheduleDate, setScheduleDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [playerIds, setPlayerIds]       = useState(['','','','',''])
@@ -100,21 +172,16 @@ export default function Admin() {
     setPuzzles(data ?? [])
   }
 
-  // ── Wikipedia: handle URL or search term ─────────────────────────────
   async function handleWikiSearch() {
     if (!wikiInput.trim()) return
     setWikiLoading(true)
     setWikiResults([])
     setWikiSearched(false)
     setMsg(null)
-
     const parsed = parseWikiInput(wikiInput)
-
     if (parsed.type === 'slug') {
-      // Direct fetch by page title
       await importBySlug(parsed.value)
     } else {
-      // Search Wikipedia
       try {
         const res = await fetch(
           `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(parsed.value + ' rugby league')}&format=json&origin=*&srlimit=6`
@@ -122,14 +189,13 @@ export default function Admin() {
         const data = await res.json()
         const results = data.query?.search ?? []
         if (results.length === 1) {
-          // Only one result — import directly
           await importByPageId(results[0].pageid, results[0].title)
         } else {
           setWikiResults(results)
           setWikiSearched(true)
         }
       } catch {
-        setMsg({ type:'err', text:'Wikipedia search failed. Try pasting the Wikipedia URL instead.' })
+        setMsg({ type:'err', text:'Wikipedia search failed. Try pasting the Wikipedia URL.' })
       }
     }
     setWikiLoading(false)
@@ -141,15 +207,15 @@ export default function Admin() {
         `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(slug)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`
       )
       const data = await res.json()
-      const pages = data.query.pages
+      const pages  = data.query.pages
       const pageId = Object.keys(pages)[0]
       if (pageId === '-1') {
-        setMsg({ type:'err', text:'Wikipedia page not found. Try searching by name instead.' })
-        return
+        setMsg({ type:'err', text:'Wikipedia page not found.' }); return
       }
-      await importByPageId(parseInt(pageId), pages[pageId].title, pages[pageId].revisions?.[0]?.slots?.main?.['*'])
-    } catch {
-      setMsg({ type:'err', text:'Failed to fetch Wikipedia page.' })
+      const wikitext = pages[pageId].revisions?.[0]?.slots?.main?.['*'] ?? ''
+      await importFromWikitext(pageId, pages[pageId].title, wikitext)
+    } catch (err) {
+      setMsg({ type:'err', text:'Failed to fetch Wikipedia page: ' + err.message })
     }
   }
 
@@ -157,7 +223,6 @@ export default function Admin() {
     setWikiLoading(true)
     setWikiResults([])
     setWikiSearched(false)
-
     try {
       let wikitext = wikitextOverride
       if (!wikitext) {
@@ -167,101 +232,123 @@ export default function Admin() {
         const data = await res.json()
         wikitext = data.query.pages[pageId]?.revisions?.[0]?.slots?.main?.['*'] ?? ''
       }
-
-      if (!wikitext) {
-        setMsg({ type:'err', text:'Could not read Wikipedia page content.' })
-        return
-      }
-
-      // Helper to extract infobox fields
-      const get = (key) => {
-        const m = wikitext.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^\\n|{}]+)`, 'i'))
-        return m ? m[1].replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g,'$1').replace(/'{2,3}/g,'').replace(/<[^>]+>/g,'').replace(/\{\{[^}]+\}\}/g,'').trim() : ''
-      }
-
-      const rawName  = get('name') || get('full_name') || title
-      const position = normalisePosition(get('position') || get('playing_position'))
-      const rawShirt = get('number') || get('jersey_num') || get('shirt')
-
-      // Detect nation
-      let nation = ''
-      // First try infobox
-      const infoNation = get('nationalteam') || get('nationality') || get('birth_place')
-      for (const n of Object.keys(FLAG_MAP)) {
-        if (infoNation.includes(n) || wikitext.includes(n)) { nation = n; break }
-      }
-
-      const nationFlag = FLAG_MAP[nation] ?? ''
-
-      // Parse career clubs from wikitext tables
-      const clubs = []
-      const seen  = new Set()
-      // Pattern 1: wiki table rows with club | years | apps
-      const rx1 = /\|\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|\s*([\d]{4}[–\-][\d]{2,4}|[\d]{4})\s*\|\|\s*([\d]+)/g
-      let m
-      while ((m = rx1.exec(wikitext)) !== null) {
-        const name = m[1].trim()
-        if (!seen.has(name) && name.length > 2 && !/=|thumb|px|File:|Image:/.test(name)) {
-          seen.add(name)
-          clubs.push({ name, years: m[2], appearances: m[3] })
-        }
-      }
-      // Pattern 2: {{Rugby league career statistics}} style
-      const rx2 = /club(\d+)\s*=\s*\[\[([^\]|]+)/g
-      while ((m = rx2.exec(wikitext)) !== null) {
-        const name = m[2].trim()
-        const idx  = m[1]
-        if (!seen.has(name)) {
-          seen.add(name)
-          const yearM = wikitext.match(new RegExp(`year${idx}\\s*=\\s*([\\d]{4}[–\\-][\\d]{2,4}|[\\d]{4})`))
-          const appM  = wikitext.match(new RegExp(`apps${idx}\\s*=\\s*([\\d]+)`))
-          clubs.push({ name, years: yearM?.[1] ?? '', appearances: appM?.[1] ?? '' })
-        }
-      }
-
-      // Detect leagues
-      const nrlClues = ['Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs','Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Dolphins','NRL','National Rugby League']
-      const slClues  = ['Super League','Wigan Warriors','Leeds Rhinos','Warrington','Catalans','Castleford','Wakefield','Salford','Leigh','Huddersfield','Hull FC','Hull KR','St Helens','Toulouse']
-      const leagues  = []
-      if (slClues.some(k => wikitext.includes(k)))  leagues.push('SL')
-      if (nrlClues.some(k => wikitext.includes(k))) leagues.push('NRL')
-      if (leagues.length === 0) leagues.push('SL')
-
-      const cleanName = rawName.split('(')[0].replace(/\[\[|\]\]/g,'').trim()
-
-      setForm(f => ({
-        ...f,
-        name:        cleanName || f.name,
-        position:    position  || f.position,
-        nation:      nation    || f.nation,
-        nation_flag: nationFlag || f.nation_flag,
-        shirt_number: rawShirt || f.shirt_number,
-        leagues,
-        clubs: clubs.length > 0 ? clubs : f.clubs,
-      }))
-
-      setWikiInput('')
-      setMsg({ type:'ok', text:`Imported "${cleanName}" from Wikipedia. Review the details below and save.` })
+      await importFromWikitext(pageId, title, wikitext)
     } catch (err) {
-      setMsg({ type:'err', text:'Failed to import from Wikipedia: ' + err.message })
-      console.error(err)
+      setMsg({ type:'err', text:'Failed to import: ' + err.message })
     } finally {
       setWikiLoading(false)
     }
   }
 
-  // ── Photo ──────────────────────────────────────────────────────────────
+  async function importFromWikitext(pageId, title, wikitext) {
+    if (!wikitext) { setMsg({ type:'err', text:'Could not read Wikipedia content.' }); return }
+
+    // ── Extract infobox fields ───────────────────────────────────────────
+    const get = (key) => {
+      const m = wikitext.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^\\n|}]+)`, 'i'))
+      return m ? stripWiki(m[1]) : ''
+    }
+
+    const rawName  = stripWiki(get('name') || get('full_name') || title)
+    // Position: grab raw value and normalise — takes the first listed
+    const rawPos   = get('position') || get('playing_position') || get('pos')
+    const position = normalisePosition(rawPos)
+    const rawShirt = get('number') || get('jersey_num') || get('shirt')
+
+    // ── Nation detection ────────────────────────────────────────────────
+    let nation = ''
+    const infoNation = get('nationalteam') || get('nationality') || get('birth_place') || ''
+    // Try infobox fields first, then scan full text
+    for (const n of Object.keys(FLAG_MAP)) {
+      if (infoNation.includes(n)) { nation = n; break }
+    }
+    if (!nation) {
+      for (const n of Object.keys(FLAG_MAP)) {
+        if (wikitext.includes(n + ' national')) { nation = n; break }
+      }
+    }
+    if (!nation) {
+      // Last resort: birthplace in infobox
+      for (const n of Object.keys(FLAG_MAP)) {
+        if (infoNation.toLowerCase().includes(n.toLowerCase())) { nation = n; break }
+      }
+    }
+    const nationFlag = FLAG_MAP[nation] ?? ''
+
+    // ── Career clubs ─────────────────────────────────────────────────────
+    const clubs = parseCareerClubs(wikitext)
+
+    // ── League detection ─────────────────────────────────────────────────
+    const nrlClues = ['Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs','Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Dolphins','NRL','National Rugby League']
+    const slClues  = ['Super League','Wigan Warriors','Leeds Rhinos','Warrington','Catalans','Castleford','Wakefield','Salford','Leigh','Huddersfield','Hull FC','Hull KR','St Helens','Toulouse']
+    const leagues  = []
+    if (slClues.some(k => wikitext.includes(k)))  leagues.push('SL')
+    if (nrlClues.some(k => wikitext.includes(k))) leagues.push('NRL')
+    if (leagues.length === 0) leagues.push('SL')
+
+    // ── Photo: fetch via Wikipedia image API ────────────────────────────
+    let photoUrl = null
+    try {
+      const imgRes = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=pageimages&pithumbsize=400&format=json&origin=*`
+      )
+      const imgData = await imgRes.json()
+      photoUrl = imgData.query?.pages?.[pageId]?.thumbnail?.source ?? null
+    } catch { /* photo is optional */ }
+
+    const cleanName = rawName.split('(')[0].replace(/\[\[|\]\]/g,'').trim()
+
+    setForm(f => ({
+      ...f,
+      name:        cleanName || f.name,
+      position:    position  || f.position,
+      nation:      nation    || f.nation,
+      nation_flag: nationFlag || f.nation_flag,
+      shirt_number: rawShirt || f.shirt_number,
+      leagues,
+      clubs: clubs.length > 0 ? clubs : f.clubs,
+    }))
+
+    if (photoUrl) {
+      setWikiPhotoUrl(photoUrl)
+      setPhotoPreview(photoUrl)
+    }
+
+    setWikiInput('')
+    setMsg({ type:'ok', text:`Imported "${cleanName}" — ${clubs.length} club(s) found. Review and save.` })
+  }
+
+  // ── Photo upload ───────────────────────────────────────────────────────
   function handlePhotoChange(e) {
     const file = e.target.files[0]; if (!file) return
-    setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file))
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+    setWikiPhotoUrl(null)
   }
 
   async function uploadPhoto(playerId) {
-    if (!photoFile) return form.photo_path
-    const ext = photoFile.name.split('.').pop()
-    const path = `${playerId}.${ext}`
-    await supabase.storage.from('player-photos').upload(path, photoFile, { upsert: true })
-    return path
+    // If user selected a file, upload it
+    if (photoFile) {
+      const ext  = photoFile.name.split('.').pop()
+      const path = `${playerId}.${ext}`
+      await supabase.storage.from('player-photos').upload(path, photoFile, { upsert: true })
+      return path
+    }
+    // If we have a Wikipedia photo URL, download and upload it
+    if (wikiPhotoUrl) {
+      try {
+        const res  = await fetch(wikiPhotoUrl)
+        const blob = await res.blob()
+        const ext  = wikiPhotoUrl.split('.').pop().split('?')[0] || 'jpg'
+        const path = `${playerId}.${ext}`
+        await supabase.storage.from('player-photos').upload(path, blob, {
+          upsert: true,
+          contentType: blob.type || 'image/jpeg',
+        })
+        return path
+      } catch { /* fall through */ }
+    }
+    return form.photo_path
   }
 
   // ── Save player ────────────────────────────────────────────────────────
@@ -290,7 +377,8 @@ export default function Admin() {
         await supabase.from('players').update({ photo_path }).eq('id', data.id)
         setMsg({ type:'ok', text:'Player added.' })
       }
-      setForm(emptyPlayer); setEditId(null); setPhotoFile(null); setPhotoPreview(null)
+      setForm(emptyPlayer); setEditId(null); setPhotoFile(null)
+      setPhotoPreview(null); setWikiPhotoUrl(null)
       fetchPlayers()
     } catch (err) {
       setMsg({ type:'err', text: err.message })
@@ -307,7 +395,7 @@ export default function Admin() {
         name: c.name??'', years: c.years??'', appearances: String(c.appearances??''),
       })) : [{ name:'', years:'', appearances:'' }],
     })
-    setPhotoPreview(null)
+    setPhotoPreview(null); setWikiPhotoUrl(null)
     window.scrollTo({ top:0, behavior:'smooth' })
   }
 
@@ -365,25 +453,19 @@ export default function Admin() {
 
               {/* Wikipedia import */}
               <div className="mb-6 p-4 rounded-lg" style={{ background:'rgba(200,169,110,0.06)', border:'1px solid rgba(200,169,110,0.15)' }}>
-                <label className="text-xs font-mono text-mud/70 uppercase tracking-widest block mb-1">
-                  Import from Wikipedia
-                </label>
-                <p className="text-xs text-chalk/30 mb-3">Paste a Wikipedia URL or type a player name</p>
+                <label className="text-xs font-mono text-mud/70 uppercase tracking-widest block mb-1">Import from Wikipedia</label>
+                <p className="text-xs text-chalk/30 mb-3">Paste a Wikipedia URL or type a player name to search</p>
                 <div className="flex gap-2">
-                  <input
-                    value={wikiInput}
-                    onChange={e => setWikiInput(e.target.value)}
+                  <input value={wikiInput} onChange={e => setWikiInput(e.target.value)}
                     onKeyDown={e => e.key==='Enter' && handleWikiSearch()}
-                    placeholder="https://en.wikipedia.org/wiki/… or player name"
-                    className="input-vintage flex-1 text-sm"
-                  />
+                    placeholder="https://en.wikipedia.org/wiki/Kevin_Sinfield"
+                    className="input-vintage flex-1 text-sm" />
                   <button type="button" onClick={handleWikiSearch}
                     disabled={wikiLoading || !wikiInput.trim()}
                     className="btn-brass text-xs disabled:opacity-50 whitespace-nowrap">
                     {wikiLoading ? 'Loading…' : 'Import'}
                   </button>
                 </div>
-
                 {wikiSearched && wikiResults.length === 0 && (
                   <p className="text-xs text-chalk/40 mt-2 font-mono">No results. Try the full Wikipedia URL.</p>
                 )}
@@ -401,7 +483,6 @@ export default function Admin() {
                 )}
               </div>
 
-              {/* Form */}
               <form onSubmit={savePlayer} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))}
@@ -425,22 +506,18 @@ export default function Admin() {
                     placeholder="Shirt number" type="number" className="input-vintage" />
                 </div>
 
-                {/* Leagues */}
                 <div>
                   <label className="text-xs font-mono text-chalk/40 uppercase tracking-widest block mb-2">Leagues</label>
                   <div className="flex gap-3">
                     {['SL','NRL'].map(l => (
                       <button key={l} type="button" onClick={() => toggleLeague(l)}
                         className={`px-4 py-1.5 rounded text-xs font-mono font-medium border transition-all ${
-                          form.leagues.includes(l)
-                            ? 'bg-mud/20 text-mud border-mud/40'
-                            : 'text-chalk/30 border-chalk/10 hover:border-chalk/20'
+                          form.leagues.includes(l) ? 'bg-mud/20 text-mud border-mud/40' : 'text-chalk/30 border-chalk/10 hover:border-chalk/20'
                         }`}>{l}</button>
                     ))}
                   </div>
                 </div>
 
-                {/* Clubs */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-mono text-chalk/40 uppercase tracking-widest">Career clubs</label>
@@ -452,7 +529,7 @@ export default function Admin() {
                         <input value={c.name} onChange={e => updateClub(i,'name',e.target.value)}
                           placeholder="Club name" className="input-vintage flex-1" />
                         <input value={c.years} onChange={e => updateClub(i,'years',e.target.value)}
-                          placeholder="2018–22" className="input-vintage w-24" />
+                          placeholder="1997–15" className="input-vintage w-24" />
                         <input value={c.appearances} onChange={e => updateClub(i,'appearances',e.target.value)}
                           placeholder="Apps" type="number" className="input-vintage w-20" />
                         <button type="button" onClick={() => removeClub(i)}
@@ -462,15 +539,24 @@ export default function Admin() {
                   </div>
                 </div>
 
-                {/* Photo */}
                 <div>
                   <label className="text-xs font-mono text-chalk/40 uppercase tracking-widest block mb-2">Player photo</label>
                   <div className="flex items-center gap-4">
-                    {(photoPreview || form.photo_path) && (
-                      <img src={photoPreview ?? `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/player-photos/${form.photo_path}`}
-                        alt="Preview" className="w-16 h-16 object-cover rounded object-top" />
+                    {photoPreview && (
+                      <div className="relative">
+                        <img src={photoPreview} alt="Preview"
+                          className="w-16 h-20 object-cover rounded object-top" />
+                        {wikiPhotoUrl && (
+                          <span className="absolute -bottom-1 -right-1 text-xs bg-mud/80 text-pitch px-1 rounded font-mono">wiki</span>
+                        )}
+                      </div>
                     )}
-                    <input type="file" accept="image/*" onChange={handlePhotoChange} className="text-xs text-chalk/50" />
+                    <div>
+                      <input type="file" accept="image/*" onChange={handlePhotoChange} className="text-xs text-chalk/50" />
+                      {wikiPhotoUrl && !photoFile && (
+                        <p className="text-xs text-mud/60 font-mono mt-1">Wikipedia photo detected — will be saved automatically</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -479,14 +565,13 @@ export default function Admin() {
                     {saving ? 'Saving…' : editId ? 'Update player' : 'Add player'}
                   </button>
                   {editId && (
-                    <button type="button" onClick={() => { setForm(emptyPlayer); setEditId(null) }}
+                    <button type="button" onClick={() => { setForm(emptyPlayer); setEditId(null); setPhotoPreview(null); setWikiPhotoUrl(null) }}
                       className="btn-ghost text-sm">Cancel</button>
                   )}
                 </div>
               </form>
             </div>
 
-            {/* Player list */}
             <div className="card-base overflow-hidden">
               <div className="p-4 border-b border-chalk/5">
                 <input value={search} onChange={e => setSearch(e.target.value)}
@@ -542,7 +627,6 @@ export default function Admin() {
                 </button>
               </form>
             </div>
-
             <div>
               <h3 className="font-display text-base text-chalk mb-3">Upcoming Puzzles</h3>
               <div className="card-base overflow-hidden divide-y divide-chalk/5">
