@@ -288,7 +288,7 @@ export default function Admin() {
 
     // ── Extract infobox fields from wikitext ────────────────────────────
     const get = (key) => {
-      const m = wikitext.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^\\n|}]+)`, 'i'))
+      const m = wikitext.match(new RegExp(`\\\\|\\\\s*${key}\\\\s*=\\\\s*([^\\\\n}]+)`, 'i'))
       return m ? stripWiki(m[1]) : ''
     }
 
