@@ -157,7 +157,7 @@ export default function Pricing() {
           {[
             ['Can I cancel anytime?', 'Yes. Cancel from your profile page and you keep Pro access until the end of your billing period.'],
             ['Is the daily challenge really free?', 'Yes, always. The daily challenge of 5 players will always be free, no account required.'],
-            ['What's in the archive?', 'Every past daily puzzle, playable whenever you like. Pro subscribers can play any date.'],
+            ['What is in the archive?', 'Every past daily puzzle, playable whenever you like. Pro subscribers can play any date.'],
           ].map(([q, a]) => (
             <div key={q}>
               <p className="text-sm font-medium text-chalk mb-1">{q}</p>
