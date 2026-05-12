@@ -288,11 +288,31 @@ export default function Admin() {
     const clubs = await scrapeCareerClubs(title)
 
     // ── League detection from wikitext ───────────────────────────────────
-    const nrlClues = ['Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs','Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Dolphins','NRL','National Rugby League']
-    const slClues  = ['Super League','Wigan Warriors','Leeds Rhinos','Warrington','Catalans','Castleford','Wakefield Trinity','Salford','Leigh','Huddersfield','Hull FC','Hull KR','St Helens','Toulouse']
-    const leagues  = []
-    if (slClues.some(k => wikitext.includes(k)))  leagues.push('SL')
-    if (nrlClues.some(k => wikitext.includes(k))) leagues.push('NRL')
+    const NRL_CLUBS = [
+      'Melbourne Storm','Brisbane Broncos','Sydney Roosters','Canberra Raiders',
+      'Newcastle Knights','North Queensland Cowboys','Canterbury Bulldogs','Canterbury-Bankstown Bulldogs',
+      'Manly Sea Eagles','Manly-Warringah Sea Eagles','Parramatta Eels','South Sydney Rabbitohs',
+      'Gold Coast Titans','Cronulla Sharks','Cronulla-Sutherland Sharks','Penrith Panthers',
+      'New Zealand Warriors','St George Illawarra Dragons','Wests Tigers','Dolphins',
+      'Western Suburbs','North Sydney Bears','Auckland Warriors','Northern Eagles',
+      'Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs',
+      'Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Warriors',
+      'Dragons','Tigers','Dolphins','NRL','National Rugby League',
+    ]
+    const SL_CLUBS = [
+      'Wigan Warriors','Leeds Rhinos','Warrington Wolves','Catalans Dragons',
+      'Castleford Tigers','Wakefield Trinity','Salford Red Devils','Leigh Leopards',
+      'Leigh Centurions','Huddersfield Giants','Hull FC','Hull Kingston Rovers',
+      'Hull KR','St Helens','Toulouse Olympique','London Broncos','Super League',
+    ]
+    const clubNames = clubs.map(c => c.name)
+    const allText   = wikitext + ' ' + clubNames.join(' ')
+    const leagues   = []
+    if (SL_CLUBS.some(k => allText.includes(k)))  leagues.push('SL')
+    if (NRL_CLUBS.some(k => allText.includes(k))) leagues.push('NRL')
+    if (!leagues.includes('NRL') && clubNames.some(name =>
+      NRL_CLUBS.some(nrl => name.toLowerCase().includes(nrl.toLowerCase()) || nrl.toLowerCase().includes(name.toLowerCase()))
+    )) leagues.push('NRL')
     if (leagues.length === 0) leagues.push('SL')
 
     // ── Photo via Wikipedia image API ────────────────────────────────────
