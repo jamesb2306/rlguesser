@@ -1,16 +1,1479 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RLGuesser — Daily Rugby League Challenge</title>
-  <meta name="description" content="Guess the hidden Rugby League player from their career clues. A new challenge every day." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>RL Guesser</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#D4001A;--red2:#a8001a;
+  --yellow:#FFD000;--yellow2:#c9a800;
+  --cream:#FDF8EE;--cream2:#F5EDD8;--cream3:#EDE0C4;
+  --ink:#1A1008;--muted:#8B7355;--border:#C9B48A;
+  --white:#FFFFFF;--green:#00A550;
+}
+html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);overflow:hidden}
+
+/* LOADING */
+#loading{position:fixed;inset:0;background:var(--cream);display:flex;align-items:center;justify-content:center;z-index:1000}
+#loading.h{display:none}
+.spin{width:28px;height:28px;border:3px solid var(--cream3);border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* AUTH */
+#auth-overlay{position:fixed;inset:0;background:var(--cream);display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;z-index:10;overflow-y:auto}
+#auth-overlay.on{display:flex}
+.top-stripe{height:6px;background:repeating-linear-gradient(90deg,var(--red) 0,var(--red) 40px,var(--yellow) 40px,var(--yellow) 80px);flex-shrink:0;width:100%}
+.auth-logo{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:0.04em;color:var(--red);line-height:1;margin-top:20px;margin-bottom:2px}
+.auth-logo span{color:var(--ink)}
+.auth-sub{font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.auth-desc{font-size:13px;color:var(--muted);margin-bottom:24px;text-align:center;max-width:260px;line-height:1.6}
+.auth-card{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:22px;width:100%;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,0.07)}
+.auth-tabs{display:flex;background:var(--cream2);border-radius:6px;padding:3px;gap:3px;margin-bottom:18px}
+.auth-tab{flex:1;padding:7px;text-align:center;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:0.1em;color:var(--muted);cursor:pointer;border-radius:4px;transition:all .2s}
+.auth-tab.on{background:var(--red);color:var(--white)}
+.af{margin-bottom:10px}
+.af label{display:block;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.af input{width:100%;background:var(--cream);border:1.5px solid var(--border);border-radius:5px;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:15px;padding:10px 12px;outline:none;transition:border-color .2s}
+.af input:focus{border-color:var(--red)}
+.af input::placeholder{color:var(--border)}
+.abtn{width:100%;padding:12px;background:var(--red);border:none;border-radius:5px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.12em;cursor:pointer;transition:background .18s;margin-top:4px}
+.abtn:hover{background:var(--red2)}
+.aerr{font-size:12px;color:var(--red);margin-top:8px;text-align:center;min-height:14px}
+.askip{font-size:12px;color:var(--muted);text-align:center;margin-top:12px;cursor:pointer;text-decoration:underline}
+
+/* APP SHELL */
+#app{display:none;height:100vh;flex-direction:column;overflow:hidden}
+#app.on{display:flex}
+
+
+
+/* HEADER */
+.hbar{display:flex;align-items:center;padding:0 12px;height:48px;border-bottom:1.5px solid var(--border);flex-shrink:0;background:var(--white);position:sticky;top:0;z-index:50}
+.hlogo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.06em;color:var(--red)}
+.hlogo span{color:var(--ink)}
+.hright{display:flex;align-items:center;gap:4px;margin-left:auto}
+.huser{font-size:11px;font-weight:600;color:var(--muted);background:var(--cream2);border:1.5px solid var(--border);border-radius:20px;padding:4px 10px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.hbtn{padding:5px 8px;border-radius:4px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s}
+.hbtn:hover{border-color:var(--red);color:var(--red)}
+.hbtn-icon{padding:5px 8px;border-radius:4px;border:1.5px solid var(--border);background:transparent;font-size:14px;cursor:pointer;line-height:1;font-family:'Bebas Neue',sans-serif;letter-spacing:0.06em;color:var(--muted)}
+.hbtn-icon:hover{border-color:var(--red);color:var(--red)}
+/* Hide secondary buttons on small screens */
+@media(max-width:480px){
+  .hbtn-secondary{display:none!important}
+  .hlogo{font-size:19px}
+  .huser{max-width:60px;padding:4px 8px}
+  #bskip-mobile{display:block!important}
+  #hmenu-btn{display:block!important}
+}
+
+/* SCORE BAR */
+.sbar{display:flex;align-items:center;padding:5px 16px;background:var(--cream2);border-bottom:1.5px solid var(--border);gap:8px;flex-shrink:0}
+.pips{display:flex;gap:4px}
+.pip{width:28px;height:5px;border-radius:3px;background:var(--cream3);transition:background .35s;border:1px solid var(--border)}
+.pip.cur{background:var(--yellow);border-color:var(--yellow2)}
+.pip.win{background:var(--red);border-color:var(--red2)}
+.sbar-lbl{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase}
+.sbar-score{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--red);margin-left:auto;letter-spacing:0.04em;transition:transform .15s}
+.sbar-score.pop{transform:scale(1.3)}
+.sbar-score span{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-left:2px}
+
+/* MAIN AREA — fixed, no scroll */
+main{flex:1;padding:16px;display:flex;flex-direction:column;gap:14px;overflow:hidden;min-height:0;max-width:480px;margin:0 auto;width:100%}
+@media(max-width:360px){
+  main{padding:10px;gap:10px}
+  .sticker,.shadow-card.s1,.shadow-card.s2{width:230px!important;height:310px!important}
+  .shadow-card.s1{top:6px;left:4px}
+  .card-photo{flex:0 0 155px!important}
+}
+
+/* CARD */
+.sticker-wrap{position:relative;align-self:center}
+.shadow-card{position:absolute;border-radius:10px;background:var(--cream2);border:1.5px solid var(--border)}
+.shadow-card.s1{width:260px;height:350px;top:7px;left:5px;transform:rotate(3deg)}
+.shadow-card.s2{width:260px;height:350px;top:3px;left:2.5px;transform:rotate(1.5deg)}
+
+.sticker{width:260px;height:350px;border-radius:10px;background:var(--white);border:3px solid var(--ink);box-shadow:0 8px 32px rgba(0,0,0,0.15);overflow:hidden;display:flex;flex-direction:column;position:relative}
+.sticker::before{content:'';position:absolute;top:0;left:0;width:0;height:0;border-style:solid;border-width:36px 36px 0 0;border-color:var(--cream) transparent transparent transparent;z-index:10;pointer-events:none}
+
+/* Photo */
+.card-photo{flex:0 0 175px;position:relative;overflow:hidden;background:var(--cream2)}
+#photo-bg{position:absolute;inset:0;background-size:130%;background-position:top center;pointer-events:none;opacity:0}
+#photo-bg.blurred{filter:blur(14px) brightness(0.5);background-size:130%;opacity:1}
+#photo-bg.clear{filter:none;background-size:110%;opacity:1}
+.photo-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--cream2);font-size:56px;opacity:0.1}
+.flag-badge{position:absolute;top:8px;right:8px;width:44px;height:44px;border-radius:50%;background:var(--white);border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;z-index:5;transition:opacity .3s;overflow:hidden}
+.flag-badge.hidden{opacity:0;pointer-events:none}
+.flag-badge.visible{opacity:1}
+
+/* Card bottom */
+.card-band{background:var(--red);padding:0 10px;height:28px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.card-band-l{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:0.1em;color:rgba(255,255,255,0.75)}
+.card-band-r{font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--yellow);letter-spacing:0.06em}
+.card-info-bar{background:var(--yellow);padding:0 10px;height:30px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.info-nat{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.04em;color:var(--ink);transition:opacity .3s}
+.info-nat.hidden{opacity:0}
+.info-sep{width:1px;height:14px;background:rgba(26,16,8,0.2);flex-shrink:0;transition:opacity .3s}
+.info-sep.hidden{opacity:0}
+.info-pos{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.04em;color:var(--red);transition:opacity .3s}
+.info-pos.hidden{opacity:0}
+.card-clubs{background:var(--cream2);padding:8px 10px;flex:1;overflow-y:auto;cursor:pointer}
+.clubs-label{font-size:8px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.club-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--cream3)}
+.club-row:last-child{border-bottom:none}
+.club-n{font-size:11px;font-weight:700;color:var(--ink)}
+.club-y{font-size:9px;color:var(--muted)}
+.club-a{font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--red);flex-shrink:0;margin-left:4px}
+
+/* CARD ANIMATIONS */
+@keyframes cardSlideOut{0%{transform:translateX(0) rotate(0deg);opacity:1}100%{transform:translateX(120%) rotate(10deg);opacity:0}}
+@keyframes cardSlideIn{0%{transform:translateX(-120%) rotate(-10deg);opacity:0}100%{transform:translateX(0) rotate(0deg);opacity:1}}
+.sticker.slide-out{animation:cardSlideOut .32s cubic-bezier(.4,0,.8,.6) forwards}
+.sticker.slide-in{animation:cardSlideIn .38s cubic-bezier(.2,0,.2,1.2) forwards}
+
+/* CLUE PROGRESS */
+.clue-prog{display:flex;gap:6px}
+.cp-it{flex:1;height:26px;border-radius:6px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--cream2);transition:all .25s}
+.cp-it.done{background:var(--red);border-color:var(--red2)}
+.cp-it.active{background:var(--yellow);border-color:var(--yellow2)}
+.cp-lbl{font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)}
+.cp-it.done .cp-lbl{color:rgba(255,255,255,0.9)}
+.cp-it.active .cp-lbl{color:var(--ink)}
+
+/* WRONG GUESSES */
+.wg{display:flex;flex-wrap:wrap;gap:5px;min-height:0}
+.wp{padding:4px 10px;background:#FFF0F0;border:1.5px solid #FFCCCC;border-radius:20px;font-size:12px;color:var(--red);font-weight:600}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+.wg.shake{animation:shake .35s ease}
+
+/* INPUT */
+.gin-wrap{position:relative}
+#gi{width:100%;background:var(--white);border:2px solid var(--border);border-radius:8px;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:15px;padding:10px 12px;outline:none;transition:all .2s;-webkit-appearance:none}
+#gi:focus{border-color:var(--red)}
+#gi.v{border-color:var(--green);background:#F0FFF6}
+#gi::placeholder{color:var(--border)}
+#sl{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--white);border:2px solid var(--border);border-radius:8px;z-index:100;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.12);display:none}
+.si{padding:11px 14px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--cream2);transition:background .12s}
+.si:last-child{border-bottom:none}
+.si:hover,.si:active{background:var(--cream2)}
+
+
+/* BUTTONS */
+#gbtn{width:100%;padding:11px;background:var(--red);border:none;border-radius:8px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.12em;cursor:not-allowed;opacity:0.25;transition:all .2s}
+#gbtn.r{opacity:1;cursor:pointer;box-shadow:0 4px 12px rgba(212,0,26,0.3)}
+#gbtn.r:active{transform:scale(0.98)}
+
+
+/* RESULT BANNER */
+.rbanner{border-radius:10px;padding:10px;text-align:center;display:none;animation:popIn .3s cubic-bezier(.34,1.56,.64,1)}
+.rbanner.on{display:block}
+.rbanner.win{background:#F0FFF4;border:2px solid #A8E6BC}
+.rbanner.lose{background:#FFF0F0;border:2px solid #FFCCCC}
+@keyframes popIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}
+.rb-e{font-size:22px;margin-bottom:2px}
+.rb-n{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:0.06em;color:var(--ink)}
+.rb-p{font-size:11px;color:var(--muted);margin-top:1px}
+
+#bnext{width:100%;padding:11px;background:var(--yellow);border:2px solid var(--yellow2);border-radius:8px;color:var(--ink);font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.1em;cursor:pointer;display:none;transition:all .2s;box-shadow:0 4px 12px rgba(255,208,0,0.3)}
+#bnext:active{transform:scale(0.98)}
+#bnext.on{display:block}
+
+/* FINAL */
+#final,#already{display:none;padding:20px 16px 40px;flex-direction:column;align-items:center;max-width:480px;margin:0 auto;width:100%}
+#final.on,#already.on{display:flex}
+.fc{background:var(--white);border:2px solid var(--border);border-radius:14px;overflow:hidden;width:100%;max-width:400px;text-align:center}
+.fc-body{padding:24px}
+.f-lbl{font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.f-score{font-family:'Bebas Neue',sans-serif;font-size:80px;color:var(--red);line-height:1;letter-spacing:0.04em;margin-bottom:2px}
+.f-max{font-size:12px;color:var(--muted);margin-bottom:12px}
+.f-tier{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:0.06em;color:var(--ink);margin-bottom:20px}
+.f-grid{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
+.fgc{width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid}
+.fgc.w{background:#F0FFF4;border-color:#A8E6BC}
+.fgc.l{background:#FFF0F0;border-color:#FFCCCC}
+#bshare{width:100%;padding:14px;background:var(--red);border:none;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:0.12em;cursor:pointer;margin-bottom:8px;transition:background .18s}
+#bshare:hover{background:var(--red2)}
+#bshare.cp{background:var(--green)}
+.f-cb{font-size:12px;color:var(--muted);padding-bottom:4px}
+
+/* LEADERBOARD MODAL */
+#lb-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;align-items:center;justify-content:center;padding:16px}
+#lb-modal.on{display:flex}
+.lb-sheet{background:var(--white);border-radius:16px;width:100%;max-width:480px;overflow:hidden;animation:htpPop .3s cubic-bezier(.2,0,.2,1.2);max-height:85vh;display:flex;flex-direction:column}
+@keyframes slideSheet{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.lb-handle{width:40px;height:4px;background:var(--cream3);border-radius:2px;margin:12px auto 0}
+.lb-tabs{display:flex;border-bottom:1.5px solid var(--border)}
+.lb-tab{flex:1;padding:12px;border:none;background:transparent;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:0.1em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.lb-tab.active{color:var(--red);border-bottom-color:var(--red)}
+.lb-body{flex:1;overflow-y:auto;padding-bottom:8px;min-height:0}
+.lb-row{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--cream2)}
+.lb-row:last-child{border-bottom:none}
+.lb-rank{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--muted);width:28px;flex-shrink:0;text-align:center}
+.lb-rank.gold{color:#FFB800}
+.lb-rank.silver{color:#A0A0A0}
+.lb-rank.bronze{color:#CD7F32}
+.lb-name{font-weight:700;font-size:14px;flex:1}
+.lb-pts{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--red)}
+.lb-meta{font-size:10px;color:var(--muted)}
+.lb-footer{padding:10px 18px;font-size:11px;color:var(--muted);text-align:center;border-top:1px solid var(--cream2)}
+
+/* PRO MODAL */
+#pro-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;align-items:flex-end;justify-content:center}
+#pro-modal.on{display:flex}
+#sandbox-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;align-items:center;justify-content:center;padding:16px}
+#sandbox-modal.on{display:flex}
+#pvp-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;align-items:flex-end;justify-content:center}
+#pvp-modal.on{display:flex}
+.pro-sheet{background:var(--white);border-radius:16px 16px 0 0;width:100%;max-width:480px;overflow:hidden;animation:slideSheet .3s ease;text-align:center}
+.pro-body{padding:24px}
+/* PRO BADGE on header username */
+.huser.pro-active{background:linear-gradient(135deg,var(--yellow),var(--red))!important;color:white!important;border:none!important}
+/* Sandbox score banner */
+.sandbox-banner{background:var(--yellow);border-bottom:1.5px solid var(--yellow2);padding:4px 16px;font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:0.1em;color:var(--ink);display:none;text-align:center;flex-shrink:0}
+.sandbox-banner.on{display:block}
+
+/* RESULT POPUP */
+#result-popup{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.8);background:var(--white);border-radius:16px;padding:20px 28px;text-align:center;z-index:300;pointer-events:none;opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);box-shadow:0 16px 48px rgba(0,0,0,0.15);border:2px solid var(--border);min-width:200px}
+#result-popup.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#result-popup.win{border-color:#A8E6BC;background:#F0FFF4}
+#result-popup.lose{border-color:#FFCCCC;background:#FFF0F0}
+.rp-e{font-size:36px;margin-bottom:6px}
+.rp-n{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:0.06em;color:var(--ink);line-height:1}
+.rp-pts{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--red);margin-top:2px}
+/* TOAST */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--ink);color:var(--white);border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;z-index:999;transition:transform .25s;white-space:nowrap;pointer-events:none}
+#toast.on{transform:translateX(-50%) translateY(0)}
+
+/* PROFILE MODAL */
+#profile-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;align-items:center;justify-content:center;padding:16px}
+#profile-modal.on{display:flex}
+.profile-sheet{background:var(--white);border-radius:16px;width:100%;max-width:420px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;animation:htpPop .3s cubic-bezier(.2,0,.2,1.2)}
+.profile-header{padding:18px 20px 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.profile-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.08em;color:var(--ink)}
+.profile-tabs{display:flex;border-bottom:1.5px solid var(--border);flex-shrink:0;margin-top:12px}
+.profile-tab{flex:1;padding:10px;border:none;background:transparent;font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:0.1em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.profile-tab.active{color:var(--red);border-bottom-color:var(--red)}
+.profile-body{flex:1;overflow-y:auto;min-height:0}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:16px}
+.stat-box{background:var(--cream2);border:1.5px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+.stat-box-num{font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--red);line-height:1}
+.stat-box-lbl{font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.hist-row{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--cream2)}
+.hist-row:last-child{border-bottom:none}
+.hist-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);min-width:70px}
+.hist-score{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--red);min-width:52px}
+.hist-correct{font-size:11px;color:var(--muted);flex:1}
+.hist-emojis{font-size:13px;letter-spacing:2px}
+
+/* HOW TO PLAY MODAL */
+#htp-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:600;align-items:center;justify-content:center;padding:16px}
+#htp-modal.on{display:flex}
+.htp-sheet{background:var(--white);border-radius:16px;width:100%;max-width:420px;overflow:hidden;animation:htpPop .3s cubic-bezier(.2,0,.2,1.2);max-height:90vh;display:flex;flex-direction:column}
+@keyframes htpPop{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}
+.htp-handle{width:40px;height:4px;background:var(--cream3);border-radius:2px;margin:12px auto 0}
+.htp-header{padding:14px 20px 0;display:flex;align-items:center;justify-content:space-between}
+.htp-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.08em;color:var(--ink)}
+.htp-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0}
+.htp-slides{overflow:hidden;position:relative;flex:1;min-height:0}
+.htp-track{display:flex;transition:transform .35s cubic-bezier(.4,0,.2,1)}
+.htp-slide{min-width:100%;padding:20px 24px 8px;flex-shrink:0}
+.htp-slide-icon{font-size:48px;text-align:center;margin-bottom:12px}
+.htp-slide-title{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:0.06em;color:var(--ink);text-align:center;margin-bottom:8px}
+.htp-slide-body{font-size:13px;color:var(--muted);line-height:1.7;text-align:center;max-width:300px;margin:0 auto}
+.htp-slide-body strong{color:var(--ink);font-weight:700}
+.htp-example{background:var(--cream2);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:14px;text-align:left}
+.htp-ex-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--cream3);font-size:12px}
+.htp-ex-row:last-child{border-bottom:none}
+.htp-ex-num{font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--red);width:18px;flex-shrink:0}
+.htp-ex-lbl{font-weight:700;color:var(--ink);min-width:60px}
+.htp-ex-val{color:var(--muted)}
+.htp-pts-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.htp-pts-cell{background:var(--cream2);border:1.5px solid var(--border);border-radius:8px;padding:10px;text-align:center}
+.htp-pts-num{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--red);line-height:1}
+.htp-pts-sub{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.htp-dots{display:flex;justify-content:center;gap:6px;padding:16px 0 8px}
+.htp-dot{width:7px;height:7px;border-radius:50%;background:var(--cream3);border:1.5px solid var(--border);transition:all .2s;cursor:pointer}
+.htp-dot.on{background:var(--red);border-color:var(--red2);width:20px;border-radius:4px}
+.htp-nav{display:flex;gap:8px;padding:0 20px 20px}
+.htp-btn-back{flex:0 0 auto;padding:11px 18px;background:transparent;border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.08em;cursor:pointer;transition:all .2s}
+.htp-btn-back:hover{border-color:var(--ink);color:var(--ink)}
+.htp-btn-next{flex:1;padding:12px;background:var(--red);border:none;border-radius:8px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.1em;cursor:pointer;transition:background .18s;box-shadow:0 4px 12px rgba(212,0,26,0.25)}
+.htp-btn-next:hover{background:var(--red2)}
+.htp-btn-next.yellow{background:var(--yellow);color:var(--ink);box-shadow:0 4px 12px rgba(255,208,0,0.3)}
+.htp-btn-next.yellow:hover{background:var(--yellow2)}
+</style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+
+<div id="loading"><div class="spin"></div></div>
+
+<!-- AUTH -->
+<div id="auth-overlay">
+  <div class="top-stripe"></div>
+  <div class="auth-logo">RL<span>Guesser</span></div>
+  <div class="auth-sub">Super League Daily</div>
+  <div class="auth-desc">One card. Four clues. Guess the player.</div>
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <div class="auth-tab on" id="tab-l" onclick="switchTab('l')">Log In</div>
+      <div class="auth-tab" id="tab-s" onclick="switchTab('s')">Sign Up</div>
+    </div>
+    <div id="lf">
+      <div class="af"><label>Email</label><input type="email" id="le" placeholder="you@email.com" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+      <div class="af"><label>Password</label><input type="password" id="lp" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+      <button class="abtn" onclick="doLogin()">Log In</button>
+    </div>
+    <div id="sf" style="display:none">
+      <div class="af"><label>Username</label><input type="text" id="su" placeholder="e.g. rlguru99" maxlength="20"/></div>
+      <div class="af"><label>Email</label><input type="email" id="se" placeholder="you@email.com"/></div>
+      <div class="af"><label>Password</label><input type="password" id="sp" placeholder="min 6 chars"/></div>
+      <button class="abtn" onclick="doSignup()">Create Account</button>
+    </div>
+    <div class="aerr" id="aerr"></div>
+    <div class="askip" onclick="playAsGuest()">Play without an account →</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="top-stripe"></div>
+  <div class="hbar">
+    <div class="hlogo">RL<span>Guesser</span></div>
+    <div class="hright">
+      <div class="huser" id="huser" onclick="showProfile()" style="cursor:pointer">Guest</div>
+      <button class="hbtn-icon" onclick="showLeaderboard()">🏆</button>
+      <button class="hbtn hbtn-secondary" id="hbtn-sandbox" onclick="showSandboxModal()" style="display:none;border-color:var(--border);color:var(--muted)">Arcade</button>
+      <button class="hbtn hbtn-secondary" id="hbtn-pvp" onclick="showPvPModal()" style="display:none;border-color:var(--border);color:var(--muted)">Challenge</button>
+      <button class="hbtn hbtn-secondary" onclick="showHTP()" title="How to play">Help</button>
+      <button class="hbtn hbtn-secondary" id="bskip-hdr" onclick="skipPlayer()" title="Skip — reveal answer">Reveal</button>
+      <button class="hbtn hbtn-secondary" id="hbtn-pro" onclick="showProModal()" style="display:none;border-color:var(--red);color:var(--red)">Pro</button>
+      <button class="hbtn hbtn-secondary" id="hbtn" onclick="handleAuthBtn()">Log In</button>
+      <button class="hbtn" id="bskip-mobile" onclick="skipPlayer()" style="display:none">Reveal</button>
+      <button class="hbtn-icon" id="hmenu-btn" onclick="showProfile()" style="display:none;font-size:16px;letter-spacing:0">☰</button>
+    </div>
+  </div>
+  <div class="sbar">
+    <div class="pips" id="pips"></div>
+    <div class="sbar-lbl" id="sbar-lbl">Player 1 of 5</div>
+    <div class="sbar-score" id="sbar-score">0 <span>pts</span></div>
+  </div>
+
+  <main id="mgame">
+    <!-- CARD -->
+    <div style="display:flex;justify-content:center">
+      <div class="sticker-wrap">
+        <div class="shadow-card s1"></div>
+        <div class="shadow-card s2"></div>
+        <div class="sticker">
+          <div class="card-photo" id="card-photo">
+            <div id="photo-bg"></div>
+            <div class="photo-empty" id="photo-empty">👤</div>
+            <div class="flag-badge hidden" id="flag-badge"></div>
+          </div>
+          <div class="card-band">
+            <div class="card-band-l">Super League</div>
+            <div class="card-band-r" id="card-num">#01</div>
+          </div>
+          <div class="card-info-bar">
+            <div class="info-nat hidden" id="info-nat"></div>
+            <div class="info-sep hidden" id="info-sep"></div>
+            <div class="info-pos hidden" id="info-pos"></div>
+          </div>
+          <div class="card-clubs" id="card-clubs">
+            <div class="clubs-label">Club History</div>
+            <div id="clubs-content"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLUE PROGRESS -->
+    <div class="clue-prog" id="clue-prog"></div>
+
+    <!-- WRONG GUESSES -->
+    <div class="wg" id="wg"></div>
+
+    <!-- INPUT -->
+    <div id="ginput-area">
+      <div class="gin-wrap" style="margin-bottom:8px">
+        <input type="text" id="gi" placeholder="Type a player name..." autocomplete="off" autocorrect="off" spellcheck="false"/>
+        <div id="sl"></div>
+      </div>
+      <button id="gbtn" onclick="submitGuess()" style="margin-bottom:8px">Guess</button>
+
+    </div>
+
+    <button id="bnext" onclick="nextRound()">Next Player →</button>
+  </main>
+
+  <div id="final">
+    <div class="fc">
+      <div class="top-stripe"></div>
+      <div class="fc-body">
+        <div class="f-lbl" id="f-date"></div>
+        <div class="f-score" id="f-score">0</div>
+        <div class="f-max" id="f-max"></div>
+        <div class="f-tier" id="f-tier"></div>
+        <div class="f-grid" id="f-grid"></div>
+        <button id="bshare" onclick="shareResult()">📋 Copy Result</button>
+        <div id="f-pvp-btn" style="display:none;margin-top:8px">
+          <button onclick="showPvPModal()" style="width:100%;padding:12px;background:var(--ink);border:none;border-radius:8px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.1em;cursor:pointer">⚔️ Challenge A Mate</button>
+        </div>
+        <div id="f-sandbox-btn" style="display:none;margin-top:8px">
+          <button onclick="showSandboxModal()" style="width:100%;padding:12px;background:var(--cream2);border:1.5px solid var(--border);border-radius:8px;color:var(--ink);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.1em;cursor:pointer">🕹️ Play Arcade Mode</button>
+        </div>
+        <div class="f-cb" id="f-cb">New players tomorrow</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="already">
+    <div class="fc">
+      <div class="top-stripe"></div>
+      <div class="fc-body">
+        <div class="f-lbl" id="ap-date"></div>
+        <div class="f-score" id="ap-score">0</div>
+        <div class="f-max" id="ap-sub"></div>
+        <div style="color:var(--muted);font-size:13px;margin-top:8px;margin-bottom:16px">Come back tomorrow for 5 new players</div>
+        <div id="ap-pvp-btn" style="display:none;margin-bottom:8px">
+          <button onclick="showPvPModal()" style="width:100%;padding:12px;background:var(--ink);border:none;border-radius:8px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.1em;cursor:pointer">⚔️ Challenge A Mate</button>
+        </div>
+        <div id="ap-sandbox-btn" style="display:none">
+          <button onclick="showSandboxModal()" style="width:100%;padding:12px;background:var(--yellow);border:1.5px solid var(--yellow2);border-radius:8px;color:var(--ink);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.1em;cursor:pointer">🕹️ Play Arcade Mode</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROFILE MODAL -->
+<div id="profile-modal" onclick="if(event.target===this)closeProfile()">
+  <div class="profile-sheet">
+    <div class="profile-header">
+      <div class="profile-title" id="profile-username">My Profile</div>
+      <button onclick="closeProfile()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1">×</button>
+    </div>
+    <div class="profile-tabs">
+      <button class="profile-tab active" id="ptab-stats" onclick="switchProfileTab('stats')">Stats</button>
+      <button class="profile-tab" id="ptab-history" onclick="switchProfileTab('history')">History</button>
+      <button class="profile-tab" id="ptab-settings" onclick="switchProfileTab('settings')">Settings</button>
+    </div>
+    <div class="profile-body" id="profile-body"></div>
+  </div>
+</div>
+
+<!-- LEADERBOARD SHEET -->
+<div id="lb-modal" onclick="if(event.target===this)closeLB()">
+  <div class="lb-sheet">
+    <div class="lb-handle"></div>
+    <div style="padding:12px 18px 0;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.06em;color:var(--ink)">🏆 Leaderboard</div>
+      <button onclick="closeLB()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+    </div>
+    <div class="lb-tabs">
+      <button class="lb-tab active" id="lbt-today" onclick="loadLB('today')">Today</button>
+      <button class="lb-tab" id="lbt-week" onclick="loadLB('week')">This Week</button>
+      <button class="lb-tab" id="lbt-all" onclick="loadLB('all')">All Time</button>
+    </div>
+    <div class="lb-body" id="lb-body"></div>
+    <div class="lb-footer">Based on daily challenge scores only</div>
+  </div>
+</div>
+
+<!-- PRO SHEET -->
+<div id="pro-modal" onclick="if(event.target===this)closeProModal()">
+  <div class="pro-sheet">
+    <div class="lb-handle"></div>
+    <div class="pro-body">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:0.04em;color:var(--ink);margin-bottom:4px">RLGuesser Pro</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6">Unlimited players, challenge mates, pick your difficulty.</div>
+      <div style="background:var(--cream2);border-radius:10px;padding:16px;margin-bottom:20px;text-align:left">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:48px;color:var(--red);line-height:1;text-align:center">£2.99<span style="font-size:16px;color:var(--muted)">/mo</span></div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:13px;color:var(--ink);display:flex;gap:8px;align-items:center">🕹️ <span><strong>Arcade mode</strong> — unlimited players, any difficulty</span></div>
+          <div style="font-size:13px;color:var(--ink);display:flex;gap:8px;align-items:center">⚔️ <span><strong>Challenge a mate</strong> — send a PvP link, compare scores</span></div>
+          <div style="font-size:13px;color:var(--ink);display:flex;gap:8px;align-items:center">🏆 <span><strong>Leaderboard</strong> — compete across all modes</span></div>
+        </div>
+      </div>
+      <button id="checkout-btn" onclick="startCheckout()" style="width:100%;padding:14px;background:var(--red);border:none;border-radius:8px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.1em;cursor:pointer;margin-bottom:10px;box-shadow:0 4px 12px rgba(212,0,26,0.3)">Subscribe Now — £2.99/mo</button>
+      <button onclick="closeProModal()" style="width:100%;padding:10px;background:transparent;border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer">Maybe later</button>
+    </div>
+  </div>
+</div>
+
+<!-- SANDBOX MODAL -->
+<div id="sandbox-modal" onclick="if(event.target===this)closeSandbox()">
+  <div class="pro-sheet" style="border-radius:16px;max-height:90vh;overflow-y:auto;max-width:420px">
+    <div class="lb-handle"></div>
+    <div class="pro-body">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:0.04em;color:var(--ink);margin-bottom:4px">🕹️ Arcade Mode</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6">Unlimited players. Pick your difficulty and keep going.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+        <button onclick="startSandbox('easy')" style="width:100%;padding:14px 16px;background:var(--cream2);border:2px solid #A8E6BC;border-radius:8px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <span style="font-size:22px">🟢</span>
+          <div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.06em;color:var(--ink)">Easy</div><div style="font-size:11px;color:var(--muted)">Superstars — everyone knows them</div></div>
+        </button>
+        <button onclick="startSandbox('medium')" style="width:100%;padding:14px 16px;background:var(--cream2);border:2px solid var(--yellow2);border-radius:8px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <span style="font-size:22px">🟡</span>
+          <div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.06em;color:var(--ink)">Medium</div><div style="font-size:11px;color:var(--muted)">Solid Super League fans only</div></div>
+        </button>
+        <button onclick="startSandbox('hard')" style="width:100%;padding:14px 16px;background:var(--cream2);border:2px solid #FFCCCC;border-radius:8px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <span style="font-size:22px">🔴</span>
+          <div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.06em;color:var(--ink)">Hard</div><div style="font-size:11px;color:var(--muted)">True die-hards only</div></div>
+        </button>
+        <button onclick="startSandbox('all')" style="width:100%;padding:14px 16px;background:var(--cream2);border:2px solid var(--border);border-radius:8px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <span style="font-size:22px">🎲</span>
+          <div><div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.06em;color:var(--ink)">Mixed</div><div style="font-size:11px;color:var(--muted)">All difficulties, random order</div></div>
+        </button>
+      </div>
+      <button onclick="closeSandbox()" style="width:100%;padding:10px;background:transparent;border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PVP CHALLENGE MODAL -->
+<div id="pvp-modal" onclick="if(event.target===this)closePvP()">
+  <div class="pro-sheet">
+    <div class="lb-handle"></div>
+    <div class="pro-body" id="pvp-body">
+      <!-- filled by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- HOW TO PLAY MODAL -->
+<div id="htp-modal">
+  <div class="htp-sheet">
+    <div class="htp-handle"></div>
+    <div class="htp-header">
+      <div class="htp-title">How To Play</div>
+      <button class="htp-close" onclick="closeHTP()">×</button>
+    </div>
+    <div class="htp-slides">
+      <div class="htp-track" id="htp-track">
+
+        <!-- Slide 1: The concept -->
+        <div class="htp-slide">
+          <div class="htp-slide-icon">🃏</div>
+          <div class="htp-slide-title">Guess The Player</div>
+          <div class="htp-slide-body">
+            Each round you get a <strong>mystery player card</strong>. Their name is hidden — your job is to figure out who they are before running out of clues.
+          </div>
+          <div class="htp-example">
+            <div class="htp-ex-row"><div class="htp-ex-num">1</div><div class="htp-ex-lbl">Clubs</div><div class="htp-ex-val">Club history revealed</div></div>
+            <div class="htp-ex-row"><div class="htp-ex-num">2</div><div class="htp-ex-lbl">Nation</div><div class="htp-ex-val">Nationality shown</div></div>
+            <div class="htp-ex-row"><div class="htp-ex-num">3</div><div class="htp-ex-lbl">Position</div><div class="htp-ex-val">Playing position shown</div></div>
+            <div class="htp-ex-row"><div class="htp-ex-num">4</div><div class="htp-ex-lbl">Photo</div><div class="htp-ex-val">Blurred photo revealed</div></div>
+          </div>
+        </div>
+
+        <!-- Slide 2: Scoring -->
+        <div class="htp-slide">
+          <div class="htp-slide-icon">⚡</div>
+          <div class="htp-slide-title">Score Big</div>
+          <div class="htp-slide-body">
+            Guess early, score more. Each wrong guess reveals the next clue and costs you points. <strong>Get it first try for maximum points.</strong>
+          </div>
+          <div class="htp-pts-grid">
+            <div class="htp-pts-cell"><div class="htp-pts-num">500</div><div class="htp-pts-sub">1st clue</div></div>
+            <div class="htp-pts-cell"><div class="htp-pts-num">400</div><div class="htp-pts-sub">2nd clue</div></div>
+            <div class="htp-pts-cell"><div class="htp-pts-num">300</div><div class="htp-pts-sub">3rd clue</div></div>
+            <div class="htp-pts-cell"><div class="htp-pts-num">200</div><div class="htp-pts-sub">4th clue</div></div>
+          </div>
+        </div>
+
+        <!-- Slide 3: Daily + leaderboard -->
+        <div class="htp-slide">
+          <div class="htp-slide-icon">🏆</div>
+          <div class="htp-slide-title">Daily Challenge</div>
+          <div class="htp-slide-body">
+            Every day brings <strong>5 new players</strong>. Complete all 5 to get your final score, then hit the leaderboard to see how you rank against other fans.<br><br>
+            <strong>Sign up to save your scores</strong> and appear on the leaderboard — or play as a guest anytime.
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="htp-dots" id="htp-dots">
+      <div class="htp-dot on" onclick="goSlide(0)"></div>
+      <div class="htp-dot" onclick="goSlide(1)"></div>
+      <div class="htp-dot" onclick="goSlide(2)"></div>
+    </div>
+    <div class="htp-nav">
+      <button class="htp-btn-back" id="htp-back" onclick="htpBack()" style="display:none">← Back</button>
+      <button class="htp-btn-next" id="htp-next" onclick="htpNext()">Next →</button>
+    </div>
+  </div>
+</div>
+
+<div id="result-popup">
+  <div class="rp-e" id="rp-e"></div>
+  <div class="rp-n" id="rp-n"></div>
+  <div class="rp-pts" id="rp-pts"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const SB_URL='https://iloyfdzfaxteyiqvyaum.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlsb3lmZHpmYXh0ZXlpcXZ5YXVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODAwNDYsImV4cCI6MjA5MzI1NjA0Nn0.99WC1Nz2YCVg5IULkWGiSto1dO3yr_6iilM34wZtSas';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const TODAY=new Date().toISOString().split('T')[0];
+const PPD=5;
+const PTS=[500,400,300,200];
+const CLUE_LBLS=['Clubs','Nation','Position','Photo'];
+const FLAGS={'english':'gb-eng','welsh':'gb-wls','scottish':'gb-sct','irish':'ie','northern irish':'gb-nir','australian':'au','new zealander':'nz','french':'fr','samoan':'ws','tongan':'to','papua new guinean':'pg','fijian':'fj','british':'gb','canadian':'ca','cook islander':'ck','lebanese':'lb','jamaican':'jm','south african':'za','american':'us'};
+
+let user=null,players=[],allPlayers=[],currentIdx=0,currentClue=0;
+let wrongGuesses=[],totalScore=0,roundResults=[],roundOver=false,validSel=false;
+let currentPhotoUrl='';
+let isPro=false,sandboxMode=false,sandboxDiff='all',sandboxStreak=0,sandboxUsed=[];
+let pvpSeed=null,pvpChallenger=null;
+
+function getFlag(nat){
+  const code=FLAGS[nat.toLowerCase()];
+  if(!code)return '<span style="font-size:20px">🌍</span>';
+  return `<img src="https://flagcdn.com/w40/${code}.png" style="width:32px;height:auto;border-radius:2px;display:block" alt="${nat}"/>`;
+}
+
+function switchTab(t){
+  document.getElementById('tab-l').classList.toggle('on',t==='l');
+  document.getElementById('tab-s').classList.toggle('on',t==='s');
+  document.getElementById('lf').style.display=t==='l'?'block':'none';
+  document.getElementById('sf').style.display=t==='s'?'block':'none';
+  document.getElementById('aerr').textContent='';
+}
+async function doLogin(){
+  const {error}=await sb.auth.signInWithPassword({email:document.getElementById('le').value.trim(),password:document.getElementById('lp').value});
+  if(error)document.getElementById('aerr').textContent=error.message;
+}
+async function doSignup(){
+  const username=document.getElementById('su').value.trim();
+  const email=document.getElementById('se').value.trim();
+  const pass=document.getElementById('sp').value;
+  const el=document.getElementById('aerr');
+  if(!username){el.style.color='var(--red)';el.textContent='Username required';return;}
+  if(!/^[a-zA-Z0-9_]{3,20}$/.test(username)){el.style.color='var(--red)';el.textContent='3-20 chars, letters/numbers/underscore';return;}
+  const banned=['cunt','fuck','shit','dick','cock','pussy','nigger','nigga','faggot','fag','twat','wank','wanker','bastard','bitch','arse','asshole','arsehole','piss','prick','slag','slut','whore','bollocks','knob','bellend'];
+  if(banned.some(w=>username.toLowerCase().includes(w))){el.style.color='var(--red)';el.textContent='That username isn\'t allowed';return;}
+  const {data:existing}=await sb.from('profiles').select('id').eq('username',username).maybeSingle();
+  if(existing){el.style.color='var(--red)';el.textContent='Username taken';return;}
+  const {data,error}=await sb.auth.signUp({email,password:pass});
+  if(error){el.style.color='var(--red)';el.textContent=error.message;return;}
+  if(data.user)await sb.from('profiles').insert({id:data.user.id,username});
+  el.style.color='var(--green)';el.textContent='Check your email to verify!';
+}
+function playAsGuest(){document.getElementById('auth-overlay').classList.remove('on');showApp();}
+function handleAuthBtn(){
+  if(user)sb.auth.signOut();
+  else{document.getElementById('app').classList.remove('on');document.getElementById('auth-overlay').classList.add('on');}
+}
+async function updateUI(){
+  const u=document.getElementById('huser'),b=document.getElementById('hbtn'),pb=document.getElementById('hbtn-pro');
+  const sbBtn=document.getElementById('hbtn-sandbox'),pvpBtn=document.getElementById('hbtn-pvp');
+  const hmenu=document.getElementById('hmenu-btn');
+  if(user){
+    const {data:profile}=await sb.from('profiles').select('username').eq('id',user.id).maybeSingle();
+    u.textContent=profile?.username||user.email.split('@')[0];
+    b.textContent='Log Out';
+    b.style.display='none';
+    if(hmenu)hmenu.style.display='';
+    const {data:sub}=await sb.from('rl_subscribers').select('status').eq('user_id',user.id).maybeSingle();
+    isPro=sub?.status==='active';
+    if(isPro){
+      pb.style.display='none';
+      u.classList.add('pro-active');
+      if(sbBtn)sbBtn.style.display='';
+      if(pvpBtn)pvpBtn.style.display='';
+    } else {
+      pb.style.display='block';
+      u.classList.remove('pro-active');
+      if(sbBtn)sbBtn.style.display='none';
+      if(pvpBtn)pvpBtn.style.display='none';
+    }
+  } else {
+    u.textContent='Guest';b.textContent='Log In';b.style.display='';pb.style.display='none';
+    isPro=false;
+    if(sbBtn)sbBtn.style.display='none';
+    if(pvpBtn)pvpBtn.style.display='none';
+  }
+}
+
+async function init(){
+  sb.auth.onAuthStateChange(async(ev,sess)=>{
+    user=sess?.user||null;updateUI();
+    if(ev==='SIGNED_IN'){
+      document.getElementById('auth-overlay').classList.remove('on');
+      // If they completed the game as a guest, save their score now
+      if(roundResults.length>0&&roundResults.length===players.length){
+        const allDone=roundResults.every(r=>r.correct!==undefined);
+        if(allDone){
+          await sb.from('rl_daily_summary').upsert({user_id:user.id,date:TODAY,total_pts:totalScore,players_correct:roundResults.filter(r=>r.correct).length,completed:true},{onConflict:'user_id,date'});
+          showToast('🏆 Score saved to leaderboard!');
+        }
+      }
+      showApp();
+    }
+  });
+  const {data:{session}}=await sb.auth.getSession();
+  user=session?.user||null;updateUI();
+  document.getElementById('loading').classList.add('h');
+  showApp();
+}
+
+async function showApp(){
+  document.getElementById('app').classList.add('on');
+  const ds=new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}).toUpperCase();
+  document.getElementById('f-date').textContent=ds;
+  document.getElementById('loading').classList.remove('h');
+
+  // Check for PvP challenge link
+  const params=new URLSearchParams(window.location.search);
+  const challengeSeed=params.get('challenge');
+  const challenger=params.get('from');
+  if(challengeSeed){
+    window.history.replaceState({},'',window.location.pathname);
+    pvpSeed=parseInt(challengeSeed);
+    pvpChallenger=challenger||'Someone';
+    await loadPlayers();
+    document.getElementById('loading').classList.add('h');
+    startPvPChallenge();
+    return;
+  }
+
+  if(user){
+    await updateUI();
+    const {data}=await sb.from('rl_daily_summary').select('*').eq('user_id',user.id).eq('date',TODAY).maybeSingle();
+    if(data?.completed){document.getElementById('loading').classList.add('h');showAlreadyPlayed(data);return;}
+  }
+  await loadPlayers();
+  document.getElementById('loading').classList.add('h');
+  startGame();
+  maybeShowHTP();
+}
+
+function seededShuffle(arr,seed){
+  const a=[...arr];let s=seed;
+  for(let i=a.length-1;i>0;i--){s=(s*1664525+1013904223)&0xffffffff;const j=Math.abs(s)%(i+1);[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+function mapP(p){
+  return{id:p.id,name:p.name,team:p.team,nationality:p.nationality,position:p.position,
+    photo:p.photo_url||'',
+    clubs:typeof p.clubs==='string'?JSON.parse(p.clubs):(p.clubs||[])};
+}
+async function loadPlayers(){
+  const res=await fetch(`${SB_URL}/rest/v1/rl_players?active=eq.true&order=name.asc`,
+    {headers:{'apikey':SB_KEY,'Authorization':`Bearer ${SB_KEY}`}});
+  allPlayers=await res.json();
+  if(!Array.isArray(allPlayers)||allPlayers.length===0){
+    // fallback — try without active filter
+    const res2=await fetch(`${SB_URL}/rest/v1/rl_players?order=name.asc`,
+      {headers:{'apikey':SB_KEY,'Authorization':`Bearer ${SB_KEY}`}});
+    allPlayers=await res2.json();
+  }
+  const seed=parseInt(TODAY.replace(/-/g,''));
+  players=seededShuffle(allPlayers,seed).slice(0,PPD).map(mapP);
+}
+
+function startGame(){
+  currentIdx=0;totalScore=0;roundResults=[];
+  document.getElementById('final').classList.remove('on');
+  document.getElementById('already').classList.remove('on');
+  document.getElementById('mgame').style.display='flex';
+  loadPlayer();
+}
+
+function loadPlayer(){
+  const p=players[currentIdx];
+  currentClue=0;wrongGuesses=[];roundOver=false;currentPhotoUrl='';
+  document.getElementById('card-num').textContent='#0'+(currentIdx+1);
+  document.getElementById('wg').innerHTML='';
+  document.getElementById('bnext').className='bnext';
+  document.getElementById('ginput-area').style.display='block';
+  document.getElementById('gi').value='';
+  document.getElementById('sl').style.display='none';
+  const skipHdr2=document.getElementById('bskip-hdr');
+  if(skipHdr2)skipHdr2.style.display='';
+  setV(false);
+  // Reset card clues
+  document.getElementById('flag-badge').innerHTML='';
+  document.getElementById('flag-badge').className='flag-badge hidden';
+  document.getElementById('info-nat').textContent='';
+  document.getElementById('info-nat').className='info-nat hidden';
+  document.getElementById('info-sep').className='info-sep hidden';
+  document.getElementById('info-pos').textContent='';
+  document.getElementById('info-pos').className='info-pos hidden';
+  // Photo
+  const photoBg=document.getElementById('photo-bg');
+  const emptyEl=document.getElementById('photo-empty');
+  photoBg.className='';
+  photoBg.style.backgroundImage='none';
+  currentPhotoUrl=p.photo||'';
+  if(p.photo){
+    photoBg.className='blurred';
+    emptyEl.style.display='none';
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      if(currentPhotoUrl)photoBg.style.backgroundImage=`url('${currentPhotoUrl}')`;
+    }));
+  } else {
+    emptyEl.style.display='flex';
+  }
+  // Clubs
+  document.getElementById('clubs-content').innerHTML=p.clubs.map(c=>`
+    <div class="club-row">
+      <div><div class="club-n">${c.name}</div><div class="club-y">${c.years}</div></div>
+      ${c.apps>0?`<div class="club-a">${c.apps}</div>`:''}
+    </div>`).join('');
+  updateSbar();renderProg();
+}
+
+function updateSbar(){
+  document.getElementById('pips').innerHTML=sandboxMode?'':players.map((_,i)=>{
+    const r=roundResults[i];
+    return `<div class="pip ${r?(r.correct?'win':'lose'):(i===currentIdx?'cur':'')}"></div>`;
+  }).join('');
+  document.getElementById('sbar-lbl').textContent=sandboxMode?'':(`Player ${currentIdx+1} of ${players.length}`);
+  document.getElementById('sbar-score').innerHTML=`${totalScore.toLocaleString()} <span>pts</span>`;
+}
+
+function animateScore(){
+  const el=document.getElementById('sbar-score');
+  el.classList.add('pop');
+  setTimeout(()=>el.classList.remove('pop'),200);
+}
+
+function renderProg(){
+  document.getElementById('clue-prog').innerHTML=CLUE_LBLS.map((l,i)=>`
+    <div class="cp-it ${i<currentClue?'done':i===currentClue?'active':''}">
+      <div class="cp-lbl">${l}</div>
+    </div>`).join('');
+}
+
+function revealClue(n){
+  const p=players[currentIdx];
+  if(n===1){
+    document.getElementById('flag-badge').innerHTML=getFlag(p.nationality);
+    document.getElementById('flag-badge').className='flag-badge visible';
+    document.getElementById('info-nat').textContent=p.nationality;
+    document.getElementById('info-nat').className='info-nat visible';
+    document.getElementById('info-sep').className='info-sep visible';
+  } else if(n===2){
+    document.getElementById('info-pos').textContent=p.position;
+    document.getElementById('info-pos').className='info-pos visible';
+  } else if(n===3){
+    const photoBg=document.getElementById('photo-bg');
+    photoBg.className='clear';
+    if(currentPhotoUrl)photoBg.style.backgroundImage=`url('${currentPhotoUrl}')`;
+  }
+  renderProg();updateSbar();
+}
+
+function revealAll(){
+  const p=players[currentIdx];
+  document.getElementById('flag-badge').innerHTML=getFlag(p.nationality);
+  document.getElementById('flag-badge').className='flag-badge visible';
+  document.getElementById('info-nat').textContent=p.nationality;
+  document.getElementById('info-nat').className='info-nat visible';
+  document.getElementById('info-sep').className='info-sep visible';
+  document.getElementById('info-pos').textContent=p.position;
+  document.getElementById('info-pos').className='info-pos visible';
+  const pb=document.getElementById('photo-bg');
+  pb.className='clear';
+  if(currentPhotoUrl)pb.style.backgroundImage=`url('${currentPhotoUrl}')`;
+}
+
+function setV(v){
+  validSel=v;
+  document.getElementById('gi').className=v?'v':'';
+  document.getElementById('gbtn').className=v?'r':'';
+}
+
+document.getElementById('gi').addEventListener('input',function(){
+  const val=this.value.toLowerCase().trim();
+  const sl=document.getElementById('sl');
+  setV(false);
+  if(!val){sl.style.display='none';return;}
+  const m=allPlayers.filter(p=>p.name.toLowerCase().includes(val)&&!wrongGuesses.includes(p.name)).slice(0,6);
+  if(!m.length){sl.style.display='none';return;}
+  sl.innerHTML=m.map(p=>`<div class="si" onclick="selSug('${p.name.replace(/'/g,"\\'")}')"><span>${p.name}</span></div>`).join('');
+  sl.style.display='block';
+});
+document.getElementById('gi').addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&validSel)submitGuess();
+  if(e.key==='Escape')document.getElementById('sl').style.display='none';
+});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#gi')&&!e.target.closest('#sl'))document.getElementById('sl').style.display='none';
+});
+function selSug(name){
+  document.getElementById('gi').value=name;
+  document.getElementById('sl').style.display='none';
+  setV(true);
+  setTimeout(submitGuess,80);
+}
+
+function norm(s){return(s||'').toLowerCase().replace(/[^a-z]/g,'').trim();}
+function lev(a,b){
+  const dp=Array.from({length:a.length+1},(_,i)=>[i,...Array(b.length).fill(0)]);
+  for(let j=0;j<=b.length;j++)dp[0][j]=j;
+  for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[a.length][b.length];
+}
+function isCorrect(guess,player){
+  const g=norm(guess),a=norm(player.name),last=norm(player.name.split(' ').pop());
+  return lev(g,a)<=2||(g.length>=4&&lev(g,last)<=1)||(a.includes(g)&&g.length>4);
+}
+
+function submitGuess(){
+  if(roundOver||!validSel)return;
+  const p=players[currentIdx];
+  const guess=document.getElementById('gi').value.trim();
+  document.getElementById('gi').value='';setV(false);
+  if(isCorrect(guess,p)){
+    const earned=PTS[currentClue];totalScore+=earned;
+    animateScore();
+    endRound(true,p,earned);
+  } else {
+    wrongGuesses.push(guess);
+    const wg=document.getElementById('wg');
+    wg.innerHTML=wrongGuesses.map(g=>`<div class="wp">✗ ${g}</div>`).join('');
+    wg.classList.remove('shake');
+    void wg.offsetWidth;
+    wg.classList.add('shake');
+    if(currentClue<PTS.length-1){currentClue++;revealClue(currentClue);}
+    else endRound(false,p,0);
+  }
+}
+
+function skipPlayer(){endRound(false,players[currentIdx],0);}
+
+async function endRound(correct,p,pts){
+  roundOver=true;roundResults.push({correct,pts,name:p.name});
+  document.getElementById('ginput-area').style.display='none';
+  const skipHdr=document.getElementById('bskip-hdr');
+  if(skipHdr)skipHdr.style.display='none';
+  revealAll();updateSbar();renderProg();
+  // Track sandbox streak
+  if(sandboxMode){
+    if(correct)sandboxStreak++;else sandboxStreak=0;
+  }
+  // Show popup
+  const popup=document.getElementById('result-popup');
+  document.getElementById('rp-e').textContent=correct?'✅':'❌';
+  document.getElementById('rp-n').textContent=p.name;
+  document.getElementById('rp-pts').textContent=correct?`+${pts} pts`:`0 pts`;
+  popup.className=`${correct?'win':'lose'} on`;
+  setTimeout(()=>{popup.classList.remove('on');},1800);
+  if(user&&!sandboxMode)await sb.from('rl_scores').insert({user_id:user.id,date:TODAY,player_id:p.id,player_name:p.name,clues_used:currentClue+1,correct,points:pts});
+  const isLast=currentIdx>=players.length-1;
+  document.getElementById('bnext').textContent=isLast?(sandboxMode?'Next Round →':'See Final Score →'):'Next Player →';
+  document.getElementById('bnext').className='bnext on';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function nextRound(){
+  if(currentIdx>=players.length-1){
+    if(sandboxMode){loadSandboxRound();return;}
+    showFinal();return;
+  }
+  const sticker=document.querySelector('.sticker');
+  sticker.classList.add('slide-out');
+  setTimeout(()=>{
+    currentIdx++;
+    sticker.classList.remove('slide-out');
+    sticker.classList.add('slide-in');
+    loadPlayer();
+    setTimeout(()=>sticker.classList.remove('slide-in'),400);
+  },300);
+}
+
+async function showFinal(){
+  document.getElementById('mgame').style.display='none';
+
+  // PvP result screen
+  if(pvpSeed!==null){
+    showPvPResult();
+    return;
+  }
+
+  document.getElementById('final').classList.add('on');
+  const max=players.length*500,pct=Math.round((totalScore/max)*100);
+  document.getElementById('f-score').textContent=totalScore.toLocaleString();
+  document.getElementById('f-max').textContent=`out of ${max.toLocaleString()} possible`;
+  document.getElementById('f-tier').textContent=pct>=80?'🏆 Super League Expert':pct>=55?'⭐ Solid Fan':pct>=30?'📺 Casual Viewer':'🎟️ Buy a Season Ticket';
+  document.getElementById('f-grid').innerHTML=roundResults.map(r=>`<div class="fgc ${r.correct?'w':'l'}">${r.correct?'✅':'❌'}</div>`).join('');
+
+  // Show Pro feature buttons if pro
+  document.getElementById('f-pvp-btn').style.display=isPro?'block':'none';
+  document.getElementById('f-sandbox-btn').style.display=isPro?'block':'none';
+  document.getElementById('f-cb').textContent=sandboxMode?'':'New players tomorrow';
+
+  if(!sandboxMode&&user)await sb.from('rl_daily_summary').upsert({user_id:user.id,date:TODAY,total_pts:totalScore,players_correct:roundResults.filter(r=>r.correct).length,completed:true},{onConflict:'user_id,date'});
+}
+
+function shareResult(){
+  const emoji=roundResults.map(r=>r.correct?'✅':'❌').join('');
+  const date=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+  const text=`RL Guesser — ${date}\n${emoji}\n${totalScore} pts\nrlguesser.com`;
+  navigator.clipboard.writeText(text).then(()=>{
+    const b=document.getElementById('bshare');b.textContent='✓ Copied!';b.classList.add('cp');
+    setTimeout(()=>{b.textContent='📋 Copy Result';b.classList.remove('cp');},2000);
+  });
+}
+
+function showAlreadyPlayed(data){
+  document.getElementById('mgame').style.display='none';
+  document.getElementById('already').classList.add('on');
+  const ds=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('ap-date').textContent=ds;
+  document.getElementById('ap-score').textContent=data.total_pts.toLocaleString();
+  document.getElementById('ap-sub').textContent=`${data.players_correct} of 5 correct`;
+  // Show pro buttons if pro
+  document.getElementById('ap-sandbox-btn').style.display=isPro?'block':'none';
+  document.getElementById('ap-pvp-btn').style.display=isPro?'block':'none';
+}
+
+// ── LEADERBOARD ──────────────────────────────────────────────────
+function showLeaderboard(){document.getElementById('lb-modal').classList.add('on');loadLB('today');}
+function closeLB(){document.getElementById('lb-modal').classList.remove('on');}
+
+async function loadLB(period){
+  ['today','week','all'].forEach(t=>document.getElementById('lbt-'+t).classList.toggle('active',t===period));
+  const body=document.getElementById('lb-body');
+  body.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Loading...</div>';
+  let query=sb.from('rl_daily_summary').select('user_id,total_pts,date').eq('completed',true);
+  if(period==='today')query=query.eq('date',TODAY);
+  else if(period==='week'){const w=new Date();w.setDate(w.getDate()-7);query=query.gte('date',w.toISOString().split('T')[0]);}
+  const {data:scores,error:scErr}=await query;
+  if(scErr){console.error('LB scores error:',scErr);body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">Error: ${scErr.message}<br><small>Check Supabase RLS on rl_daily_summary</small></div>`;return;}
+  if(!scores||!scores.length){body.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">No scores yet today</div>';return;}
+  const totals={};
+  scores.forEach(s=>{if(!totals[s.user_id])totals[s.user_id]={pts:0,days:0};totals[s.user_id].pts+=s.total_pts;totals[s.user_id].days++;});
+  const userIds=Object.keys(totals);
+  const {data:profiles,error:pErr}=await sb.from('profiles').select('id,username').in('id',userIds);
+  if(pErr)console.error('LB profiles error:',pErr);
+  const nameMap={};(profiles||[]).forEach(p=>nameMap[p.id]=p.username);
+  // Include users even without a username (show user_id truncated as fallback)
+  const sorted=userIds.map(id=>({username:nameMap[id]||null,uid:id,pts:totals[id].pts,days:totals[id].days})).filter(r=>r.username).sort((a,b)=>b.pts-a.pts).slice(0,10);
+  if(!sorted.length){
+    const hasScores=userIds.length>0;
+    body.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">${hasScores?'Scores found but no usernames — check profiles table RLS':'No scores yet'}</div>`;
+    return;
+  }
+  const myUsername=user?(await sb.from('profiles').select('username').eq('id',user.id).maybeSingle())?.data?.username:null;
+  body.innerHTML=sorted.map((r,i)=>{
+    const rankClass=i===0?'gold':i===1?'silver':i===2?'bronze':'';
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+    const isMe=myUsername&&r.username===myUsername;
+    return `<div class="lb-row" style="${isMe?'background:var(--cream2)':''}">
+      <div class="lb-rank ${rankClass}">${medal||i+1}</div>
+      <div><div class="lb-name">${r.username}${isMe?' <span style="font-size:10px;color:var(--muted);font-weight:400">(you)</span>':''}</div><div class="lb-meta">${r.days} day${r.days!==1?'s':''}</div></div>
+      <div class="lb-pts">${r.pts.toLocaleString()}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── PRO / STRIPE ─────────────────────────────────────────────────
+function showProModal(){
+  if(!user){document.getElementById('app').classList.remove('on');document.getElementById('auth-overlay').classList.add('on');return;}
+  document.getElementById('pro-modal').classList.add('on');
+}
+function closeProModal(){document.getElementById('pro-modal').classList.remove('on');}
+
+async function startCheckout(){
+  if(!user)return;
+  const btn=document.getElementById('checkout-btn');
+  btn.textContent='Loading...';
+  try{
+    const {data,error}=await sb.functions.invoke('stripe-checkout',{
+      body:{priceId:'price_1TTNprEwQrOZhaYTmsEbnoYx',userId:user.id,email:user.email,successUrl:window.location.href+'?upgrade=success',cancelUrl:window.location.href}
+    });
+    if(error||!data?.url)throw new Error(error?.message||'Checkout failed');
+    window.location.href=data.url;
+  }catch(e){btn.textContent='Subscribe Now — £2.99/mo';showToast('Error: '+e.message);}
+}
+
+if(window.location.search.includes('upgrade=success')){
+  window.history.replaceState({},'',window.location.pathname);
+  setTimeout(()=>{showToast('🎉 Welcome to RLGuesser Pro!');updateUI();},1000);
+}
+
+// ── SANDBOX MODE ─────────────────────────────────────────────────
+function showSandboxModal(){
+  if(!isPro){showProModal();return;}
+  document.getElementById('sandbox-modal').classList.add('on');
+}
+function closeSandbox(){document.getElementById('sandbox-modal').classList.remove('on');}
+
+function startSandbox(diff){
+  closeSandbox();
+  sandboxMode=true;
+  sandboxDiff=diff;
+  sandboxStreak=0;
+  sandboxUsed=[];
+
+  const diffLabels={easy:'Easy',medium:'Medium',hard:'Hard',all:'Mixed'};
+  document.getElementById('sandbox-diff-lbl').textContent=diffLabels[diff];
+  document.getElementById('sandbox-banner').classList.add('on');
+
+  loadSandboxRound();
+}
+
+async function loadSandboxRound(){
+  // Load players if not yet loaded (e.g. coming from already-played screen)
+  if(!allPlayers||allPlayers.length===0) await loadPlayers();
+
+  // Pick pool by difficulty
+  let pool=allPlayers.filter(p=>sandboxDiff==='all'||p.difficulty===sandboxDiff);
+  // Filter out recently used
+  let unused=pool.filter(p=>!sandboxUsed.includes(p.id));
+  if(unused.length<5){sandboxUsed=[];unused=pool;}
+  if(!unused.length){showToast('No players available for this difficulty!');return;}
+
+  // Shuffle and pick 5
+  const seed=Date.now();
+  const picked=seededShuffle(unused,seed).slice(0,Math.min(5,unused.length));
+  sandboxUsed.push(...picked.map(p=>p.id));
+  players=picked.map(mapP);
+
+  currentIdx=0;totalScore=0;roundResults=[];
+  document.getElementById('final').classList.remove('on');
+  document.getElementById('already').classList.remove('on');
+  document.getElementById('already').style.display='none';
+  document.getElementById('mgame').style.display='flex';
+  loadPlayer();
+}
+
+// ── PVP CHALLENGE ─────────────────────────────────────────────────
+function showPvPModal(){
+  if(!isPro){showProModal();return;}
+  const body=document.getElementById('pvp-body');
+  // Generate a seed based on today + user id fragment for uniqueness
+  const seed=parseInt(TODAY.replace(/-/g,''))+(user?Math.abs(user.id.charCodeAt(0)*997):0);
+  const username=document.getElementById('huser').textContent;
+  const url=`${window.location.origin}${window.location.pathname}?challenge=${seed}&from=${encodeURIComponent(username)}`;
+
+  body.innerHTML=`
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:0.04em;color:var(--ink);margin-bottom:4px">⚔️ Challenge A Mate</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6">Send this link. They play the same 5 players. Highest score wins.</div>
+    <div style="background:var(--cream2);border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);word-break:break-all;margin-bottom:14px;text-align:left">${url}</div>
+    <button onclick="copyPvPLink('${url}')" id="pvp-copy-btn" style="width:100%;padding:13px;background:var(--red);border:none;border-radius:8px;color:var(--white);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:0.1em;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 12px rgba(212,0,26,0.25)">📋 Copy Challenge Link</button>
+    <button onclick="shareViaNative('${url}','${username}')" style="width:100%;padding:13px;background:var(--yellow);border:none;border-radius:8px;color:var(--ink);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:0.1em;cursor:pointer;margin-bottom:8px">📱 Share via WhatsApp / iMessage</button>
+    <button onclick="closePvP()" style="width:100%;padding:10px;background:transparent;border:1.5px solid var(--border);border-radius:8px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer">Cancel</button>
+  `;
+  document.getElementById('pvp-modal').classList.add('on');
+}
+function closePvP(){document.getElementById('pvp-modal').classList.remove('on');}
+
+function copyPvPLink(url){
+  navigator.clipboard.writeText(url).then(()=>{
+    const b=document.getElementById('pvp-copy-btn');
+    b.textContent='✓ Copied!';b.style.background='var(--green)';
+    setTimeout(()=>{b.textContent='📋 Copy Challenge Link';b.style.background='var(--red)';},2000);
+  });
+}
+function shareViaNative(url,username){
+  const text=`⚔️ ${username} has challenged you on RLGuesser! Can you beat their score? ${url}`;
+  if(navigator.share){navigator.share({title:'RLGuesser Challenge',text,url}).catch(()=>{});}
+  else{window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);}
+  closePvP();
+}
+
+function startPvPChallenge(){
+  // Play a seeded set of 5 players — same as what challenger got
+  const picked=seededShuffle(allPlayers,pvpSeed).slice(0,Math.min(5,allPlayers.length)).map(mapP);
+  players=picked;
+  showToast(`⚔️ Challenge from ${pvpChallenger}! Beat their score.`);
+  startGame();
+}
+
+function showPvPResult(){
+  document.getElementById('final').classList.add('on');
+  const max=players.length*500,pct=Math.round((totalScore/max)*100);
+  document.getElementById('f-score').textContent=totalScore.toLocaleString();
+  document.getElementById('f-max').textContent=`out of ${max.toLocaleString()} possible`;
+  document.getElementById('f-tier').textContent=`⚔️ Challenge from ${pvpChallenger}`;
+  document.getElementById('f-grid').innerHTML=roundResults.map(r=>`<div class="fgc ${r.correct?'w':'l'}">${r.correct?'✅':'❌'}</div>`).join('');
+  document.getElementById('f-pvp-btn').style.display='none';
+  document.getElementById('f-sandbox-btn').style.display='none';
+  document.getElementById('f-cb').textContent='Share your score back!';
+  // Override share to include challenger context
+  document.getElementById('bshare').onclick=()=>{
+    const emoji=roundResults.map(r=>r.correct?'✅':'❌').join('');
+    const text=`⚔️ I scored ${totalScore.toLocaleString()} pts on ${pvpChallenger}'s RLGuesser challenge!\n${emoji}\nrlguesser.com`;
+    navigator.clipboard.writeText(text).then(()=>{
+      const b=document.getElementById('bshare');b.textContent='✓ Copied!';b.classList.add('cp');
+      setTimeout(()=>{b.textContent='📋 Copy Result';b.classList.remove('cp');},2000);
+    });
+  };
+  pvpSeed=null;pvpChallenger=null;
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2500);
+}
+
+// ── PROFILE ───────────────────────────────────────────────────────
+let profileData=null;
+
+async function showProfile(){
+  if(!user){showToast('Log in to see your profile');return;}
+  document.getElementById('profile-modal').classList.add('on');
+  const username=document.getElementById('huser').textContent;
+  document.getElementById('profile-username').textContent=username;
+  switchProfileTab('stats');
+}
+function closeProfile(){document.getElementById('profile-modal').classList.remove('on');}
+
+function switchProfileTab(tab){
+  ['stats','history','settings'].forEach(t=>{
+    document.getElementById('ptab-'+t).classList.toggle('active',t===tab);
+  });
+  if(tab==='stats')loadProfileStats();
+  else if(tab==='history')loadProfileHistory();
+  else loadProfileSettings();
+}
+
+async function loadProfileSettings(){
+  const body=document.getElementById('profile-body');
+  const {data:profile}=await sb.from('profiles').select('username').eq('id',user.id).maybeSingle();
+  const username=profile?.username||'';
+
+  body.innerHTML=`
+    <div style="display:flex;border-bottom:1px solid var(--cream3);margin-bottom:0">
+      <button id="stab-account" onclick="switchSettingsTab('account')" style="flex:1;padding:8px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:var(--red);border-bottom:2px solid var(--red);cursor:pointer">Account</button>
+      <button id="stab-security" onclick="switchSettingsTab('security')" style="flex:1;padding:8px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer">Security</button>
+    </div>
+    <div id="settings-tab-body"></div>
+  `;
+  renderSettingsAccount(username);
+}
+
+function switchSettingsTab(tab){
+  const a=document.getElementById('stab-account');
+  const s=document.getElementById('stab-security');
+  a.style.color=tab==='account'?'var(--red)':'var(--muted)';
+  a.style.borderBottom=tab==='account'?'2px solid var(--red)':'2px solid transparent';
+  s.style.color=tab==='security'?'var(--red)':'var(--muted)';
+  s.style.borderBottom=tab==='security'?'2px solid var(--red)':'2px solid transparent';
+  if(tab==='account')renderSettingsAccount(document.getElementById('set-username')?.value||'');
+  else renderSettingsSecurity();
+}
+
+function renderSettingsAccount(username){
+  document.getElementById('settings-tab-body').innerHTML=`
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="background:var(--cream2);border:1.5px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Username</div>
+        <input id="set-username" type="text" value="${username}" maxlength="20" style="width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:6px;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 12px;outline:none;margin-bottom:8px"/>
+        <button onclick="saveUsername()" style="width:100%;padding:10px;background:var(--red);border:none;border-radius:6px;color:white;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.1em;cursor:pointer">Save Username</button>
+        <div id="username-msg" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:14px;text-align:center"></div>
+      </div>
+      ${isPro?`
+      <div style="background:var(--cream2);border:1.5px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Subscription</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.6">You're on RLGuesser Pro. Manage your billing, update payment method, or cancel below.</div>
+        <button onclick="openStripePortal()" style="width:100%;padding:10px;background:var(--ink);border:none;border-radius:6px;color:white;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.1em;cursor:pointer">Manage Subscription →</button>
+        <div id="portal-msg" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:14px;text-align:center"></div>
+      </div>`:''}
+      <div style="text-align:center;padding:4px 0 8px">
+        <button onclick="if(confirm('Log out?')){sb.auth.signOut();closeProfile();}" style="background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline">Log out</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettingsSecurity(){
+  document.getElementById('settings-tab-body').innerHTML=`
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="background:var(--cream2);border:1.5px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Change Password</div>
+        <input id="set-pw1" type="password" placeholder="New password" style="width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:6px;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 12px;outline:none;margin-bottom:8px"/>
+        <input id="set-pw2" type="password" placeholder="Confirm new password" style="width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:6px;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 12px;outline:none;margin-bottom:8px"/>
+        <button onclick="savePassword()" style="width:100%;padding:10px;background:var(--red);border:none;border-radius:6px;color:white;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.1em;cursor:pointer">Update Password</button>
+        <div id="password-msg" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:14px;text-align:center"></div>
+      </div>
+
+      <div style="background:var(--cream2);border:1.5px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Report a Bug</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">Something broken? Let us know and we'll fix it.</div>
+        <textarea id="bug-msg" placeholder="Describe the issue..." rows="3" style="width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:6px;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:13px;padding:9px 12px;outline:none;resize:none;margin-bottom:8px"></textarea>
+        <button onclick="submitBugReport()" style="width:100%;padding:10px;background:var(--ink);border:none;border-radius:6px;color:white;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:0.1em;cursor:pointer">Send Report</button>
+        <div id="bug-msg-status" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:14px;text-align:center"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function submitBugReport(){
+  const msg=document.getElementById('bug-msg').value.trim();
+  const status=document.getElementById('bug-msg-status');
+  if(!msg){status.style.color='var(--red)';status.textContent='Please describe the issue';return;}
+  const {data:profile}=await sb.from('profiles').select('username').eq('id',user.id).maybeSingle();
+  const {error}=await sb.from('rl_bug_reports').insert({
+    user_id:user.id,
+    username:profile?.username||null,
+    message:msg,
+    status:'new'
+  });
+  if(error){status.style.color='var(--red)';status.textContent='Error sending — try again';return;}
+  status.style.color='var(--green)';status.textContent='✓ Report sent, thanks!';
+  document.getElementById('bug-msg').value='';
+}
+
+async function saveUsername(){
+  const val=document.getElementById('set-username').value.trim();
+  const msg=document.getElementById('username-msg');
+  if(!val||val.length<3){msg.style.color='var(--red)';msg.textContent='Must be 3-20 characters';return;}
+  if(!/^[a-zA-Z0-9_]+$/.test(val)){msg.style.color='var(--red)';msg.textContent='Letters, numbers and underscores only';return;}
+  const banned=['cunt','fuck','shit','dick','cock','pussy','nigger','nigga','faggot','fag','twat','wank','wanker','bastard','bitch','arse','asshole','arsehole','piss','prick','slag','slut','whore','bollocks','knob','bellend'];
+  if(banned.some(w=>val.toLowerCase().includes(w))){msg.style.color='var(--red)';msg.textContent='That username isn\'t allowed';return;}
+  // Check not taken
+  const {data:existing}=await sb.from('profiles').select('id').eq('username',val).neq('id',user.id).maybeSingle();
+  if(existing){msg.style.color='var(--red)';msg.textContent='Username already taken';return;}
+  const {error}=await sb.from('profiles').update({username:val}).eq('id',user.id);
+  if(error){msg.style.color='var(--red)';msg.textContent='Error: '+error.message;return;}
+  msg.style.color='var(--green)';msg.textContent='✓ Username updated';
+  document.getElementById('huser').textContent=val;
+  document.getElementById('profile-username').textContent=val;
+}
+
+async function savePassword(){
+  const pw1=document.getElementById('set-pw1').value;
+  const pw2=document.getElementById('set-pw2').value;
+  const msg=document.getElementById('password-msg');
+  if(!pw1||pw1.length<6){msg.style.color='var(--red)';msg.textContent='Minimum 6 characters';return;}
+  if(pw1!==pw2){msg.style.color='var(--red)';msg.textContent='Passwords don\'t match';return;}
+  const {error}=await sb.auth.updateUser({password:pw1});
+  if(error){msg.style.color='var(--red)';msg.textContent='Error: '+error.message;return;}
+  msg.style.color='var(--green)';msg.textContent='✓ Password updated';
+  document.getElementById('set-pw1').value='';
+  document.getElementById('set-pw2').value='';
+}
+
+async function openStripePortal(){
+  const msg=document.getElementById('portal-msg');
+  msg.textContent='Loading...';msg.style.color='var(--muted)';
+  try{
+    const {data,error}=await sb.functions.invoke('stripe-portal',{
+      body:{userId:user.id,returnUrl:window.location.href}
+    });
+    if(error||!data?.url)throw new Error(error?.message||'No customer found');
+    window.location.href=data.url;
+  }catch(e){
+    // If no Stripe customer (e.g. manually granted Pro), show direct portal link
+    msg.style.color='var(--muted)';
+    msg.innerHTML='<a href="https://billing.stripe.com/p/login/fZu4gz6FG18XdJQglfbEA00" target="_blank" style="color:var(--red);text-decoration:underline">Open Stripe billing portal →</a>';
+  }
+}
+
+async function loadProfileStats(){
+  const body=document.getElementById('profile-body');
+  body.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">Loading...</div>';
+  const {data,error}=await sb.from('rl_daily_summary').select('total_pts,players_correct,date').eq('user_id',user.id).eq('completed',true).order('date',{ascending:false});
+  if(error||!data||!data.length){
+    body.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No games played yet</div>';
+    return;
+  }
+  const totalPts=data.reduce((s,r)=>s+r.total_pts,0);
+  const daysPlayed=data.length;
+  const bestScore=Math.max(...data.map(r=>r.total_pts));
+  const totalCorrect=data.reduce((s,r)=>s+r.players_correct,0);
+  const avgScore=Math.round(totalPts/daysPlayed);
+  const perfectDays=data.filter(r=>r.players_correct===5).length;
+
+  // Streak calc
+  const dates=data.map(r=>r.date).sort((a,b)=>b.localeCompare(a));
+  let streak=0;
+  const today=TODAY;
+  for(let i=0;i<dates.length;i++){
+    const expected=new Date(today);
+    expected.setDate(expected.getDate()-i);
+    const exp=expected.toISOString().split('T')[0];
+    if(dates[i]===exp)streak++;
+    else break;
+  }
+
+  body.innerHTML=`
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-box-num">${totalPts.toLocaleString()}</div><div class="stat-box-lbl">All-Time Pts</div></div>
+      <div class="stat-box"><div class="stat-box-num">${daysPlayed}</div><div class="stat-box-lbl">Days Played</div></div>
+      <div class="stat-box"><div class="stat-box-num">${streak}</div><div class="stat-box-lbl">Streak 🔥</div></div>
+      <div class="stat-box"><div class="stat-box-num">${bestScore.toLocaleString()}</div><div class="stat-box-lbl">Best Score</div></div>
+      <div class="stat-box"><div class="stat-box-num">${avgScore.toLocaleString()}</div><div class="stat-box-lbl">Avg Score</div></div>
+      <div class="stat-box"><div class="stat-box-num">${perfectDays}</div><div class="stat-box-lbl">Perfect Days</div></div>
+    </div>
+    ${isPro?`<div style="padding:0 16px 16px"><div style="background:linear-gradient(135deg,var(--yellow),var(--red));border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">⭐</span><div><div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:0.06em;color:white">Pro Member</div><div style="font-size:11px;color:rgba(255,255,255,0.8)">Arcade mode & Challenge unlocked</div></div></div></div>`:''}
+  `;
+}
+
+async function loadProfileHistory(){
+  const body=document.getElementById('profile-body');
+  body.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">Loading...</div>';
+  const {data,error}=await sb.from('rl_daily_summary').select('total_pts,players_correct,date').eq('user_id',user.id).eq('completed',true).order('date',{ascending:false}).limit(30);
+  if(error||!data||!data.length){
+    body.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No games played yet</div>';
+    return;
+  }
+  // Get round-level results for emoji grid
+  const {data:scores}=await sb.from('rl_scores').select('date,correct').eq('user_id',user.id).in('date',data.map(d=>d.date)).order('date',{ascending:false});
+  const emojiMap={};
+  (scores||[]).forEach(s=>{
+    if(!emojiMap[s.date])emojiMap[s.date]=[];
+    emojiMap[s.date].push(s.correct?'✅':'❌');
+  });
+
+  body.innerHTML=data.map(r=>{
+    const d=new Date(r.date);
+    const dateStr=d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+    const emojis=(emojiMap[r.date]||[]).join('');
+    const pct=Math.round((r.total_pts/2500)*100);
+    return `<div class="hist-row">
+      <div class="hist-date">${dateStr}</div>
+      <div class="hist-score">${r.total_pts.toLocaleString()}</div>
+      <div class="hist-correct">${r.players_correct}/5 correct</div>
+      <div class="hist-emojis">${emojis}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── HOW TO PLAY ───────────────────────────────────────────────────
+let htpSlide=0;
+const HTP_TOTAL=3;
+
+function showHTP(){document.getElementById('htp-modal').classList.add('on');goSlide(0);}
+function closeHTP(){document.getElementById('htp-modal').classList.remove('on');}
+
+function goSlide(n){
+  htpSlide=n;
+  document.getElementById('htp-track').style.transform=`translateX(-${n*100}%)`;
+  document.querySelectorAll('.htp-dot').forEach((d,i)=>d.classList.toggle('on',i===n));
+  const back=document.getElementById('htp-back');
+  const next=document.getElementById('htp-next');
+  back.style.display=n===0?'none':'block';
+  if(n===HTP_TOTAL-1){next.textContent="Let's Play!";next.classList.add('yellow');}
+  else{next.textContent='Next →';next.classList.remove('yellow');}
+}
+function htpNext(){
+  if(htpSlide>=HTP_TOTAL-1){closeHTP();return;}
+  goSlide(htpSlide+1);
+}
+function htpBack(){if(htpSlide>0)goSlide(htpSlide-1);}
+
+// Show on first visit (not seen before)
+function maybeShowHTP(){
+  if(!localStorage.getItem('rlg_htp_seen')){
+    localStorage.setItem('rlg_htp_seen','1');
+    setTimeout(showHTP, 600);
+  }
+}
+
+init();
+</script>
 </body>
 </html>
