@@ -35,6 +35,15 @@ function normalisePosition(raw) {
   return ''
 }
 
+// Extract the Wikipedia page slug from a URL or return the raw string as a search term
+function parseWikiInput(input) {
+  input = input.trim()
+  // If it's a Wikipedia URL, extract the page title
+  const urlMatch = input.match(/wikipedia\.org\/wiki\/([^?#]+)/)
+  if (urlMatch) return { type: 'slug', value: decodeURIComponent(urlMatch[1]) }
+  return { type: 'search', value: input }
+}
+
 export default function Admin() {
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
@@ -46,9 +55,9 @@ export default function Admin() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
-  const [wikiQuery, setWikiQuery] = useState('')
-  const [wikiResults, setWikiResults] = useState([])
-  const [wikiLoading, setWikiLoading] = useState(false)
+  const [wikiInput, setWikiInput]       = useState('')
+  const [wikiResults, setWikiResults]   = useState([])
+  const [wikiLoading, setWikiLoading]   = useState(false)
   const [wikiSearched, setWikiSearched] = useState(false)
 
   const emptyPlayer = {
@@ -57,15 +66,15 @@ export default function Admin() {
     clubs:[{ name:'', years:'', appearances:'' }],
     photo_path:'',
   }
-  const [form, setForm] = useState(emptyPlayer)
-  const [editId, setEditId] = useState(null)
-  const [photoFile, setPhotoFile] = useState(null)
+  const [form, setForm]             = useState(emptyPlayer)
+  const [editId, setEditId]         = useState(null)
+  const [photoFile, setPhotoFile]   = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
 
   const [scheduleDate, setScheduleDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [playerIds, setPlayerIds] = useState(['','','','',''])
-  const [puzzles, setPuzzles] = useState([])
-  const [autoLoading, setAutoLoading] = useState(false)
+  const [playerIds, setPlayerIds]       = useState(['','','','',''])
+  const [puzzles, setPuzzles]           = useState([])
+  const [autoLoading, setAutoLoading]   = useState(false)
 
   useEffect(() => {
     if (!authLoading && !isAdmin) navigate('/')
@@ -91,110 +100,173 @@ export default function Admin() {
     setPuzzles(data ?? [])
   }
 
-  async function searchWikipedia() {
-    if (!wikiQuery.trim()) return
+  // ── Wikipedia: handle URL or search term ─────────────────────────────
+  async function handleWikiSearch() {
+    if (!wikiInput.trim()) return
     setWikiLoading(true)
     setWikiResults([])
     setWikiSearched(false)
+    setMsg(null)
+
+    const parsed = parseWikiInput(wikiInput)
+
+    if (parsed.type === 'slug') {
+      // Direct fetch by page title
+      await importBySlug(parsed.value)
+    } else {
+      // Search Wikipedia
+      try {
+        const res = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(parsed.value + ' rugby league')}&format=json&origin=*&srlimit=6`
+        )
+        const data = await res.json()
+        const results = data.query?.search ?? []
+        if (results.length === 1) {
+          // Only one result — import directly
+          await importByPageId(results[0].pageid, results[0].title)
+        } else {
+          setWikiResults(results)
+          setWikiSearched(true)
+        }
+      } catch {
+        setMsg({ type:'err', text:'Wikipedia search failed. Try pasting the Wikipedia URL instead.' })
+      }
+    }
+    setWikiLoading(false)
+  }
+
+  async function importBySlug(slug) {
     try {
       const res = await fetch(
-        `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(wikiQuery + ' rugby league')}&format=json&origin=*&srlimit=6`
+        `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(slug)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`
       )
       const data = await res.json()
-      setWikiResults(data.query?.search ?? [])
-      setWikiSearched(true)
+      const pages = data.query.pages
+      const pageId = Object.keys(pages)[0]
+      if (pageId === '-1') {
+        setMsg({ type:'err', text:'Wikipedia page not found. Try searching by name instead.' })
+        return
+      }
+      await importByPageId(parseInt(pageId), pages[pageId].title, pages[pageId].revisions?.[0]?.slots?.main?.['*'])
     } catch {
-      setMsg({ type:'err', text:'Wikipedia search failed.' })
-    } finally {
-      setWikiLoading(false)
+      setMsg({ type:'err', text:'Failed to fetch Wikipedia page.' })
     }
   }
 
-  async function importFromWikipedia(pageId, title) {
+  async function importByPageId(pageId, title, wikitextOverride) {
     setWikiLoading(true)
-    setMsg(null)
+    setWikiResults([])
+    setWikiSearched(false)
+
     try {
-      const res = await fetch(
-        `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`
-      )
-      const data = await res.json()
-      const wikitext = data.query.pages[pageId]?.revisions?.[0]?.slots?.main?.['*'] ?? ''
+      let wikitext = wikitextOverride
+      if (!wikitext) {
+        const res = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`
+        )
+        const data = await res.json()
+        wikitext = data.query.pages[pageId]?.revisions?.[0]?.slots?.main?.['*'] ?? ''
+      }
 
+      if (!wikitext) {
+        setMsg({ type:'err', text:'Could not read Wikipedia page content.' })
+        return
+      }
+
+      // Helper to extract infobox fields
       const get = (key) => {
-        const m = wikitext.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^\\n|]+)`, 'i'))
-        return m ? m[1].replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g,'$1').replace(/'{2,3}/g,'').replace(/<[^>]+>/g,'').trim() : ''
+        const m = wikitext.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^\\n|{}]+)`, 'i'))
+        return m ? m[1].replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g,'$1').replace(/'{2,3}/g,'').replace(/<[^>]+>/g,'').replace(/\{\{[^}]+\}\}/g,'').trim() : ''
       }
 
-      const rawName   = get('name') || title
-      const position  = normalisePosition(get('position') || get('playing_position'))
+      const rawName  = get('name') || get('full_name') || title
+      const position = normalisePosition(get('position') || get('playing_position'))
+      const rawShirt = get('number') || get('jersey_num') || get('shirt')
 
+      // Detect nation
       let nation = ''
+      // First try infobox
+      const infoNation = get('nationalteam') || get('nationality') || get('birth_place')
       for (const n of Object.keys(FLAG_MAP)) {
-        if (wikitext.includes(n)) { nation = n; break }
+        if (infoNation.includes(n) || wikitext.includes(n)) { nation = n; break }
       }
+
       const nationFlag = FLAG_MAP[nation] ?? ''
 
       // Parse career clubs from wikitext tables
       const clubs = []
       const seen  = new Set()
-      const rx = /\|\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|\s*([\d]{4}[–\-][\d]{2,4}|[\d]{4})\s*\|\|\s*([\d]+)/g
+      // Pattern 1: wiki table rows with club | years | apps
+      const rx1 = /\|\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|\s*([\d]{4}[–\-][\d]{2,4}|[\d]{4})\s*\|\|\s*([\d]+)/g
       let m
-      while ((m = rx.exec(wikitext)) !== null) {
+      while ((m = rx1.exec(wikitext)) !== null) {
         const name = m[1].trim()
-        if (!seen.has(name) && name.length > 2 && !/=|thumb|px/.test(name)) {
+        if (!seen.has(name) && name.length > 2 && !/=|thumb|px|File:|Image:/.test(name)) {
           seen.add(name)
           clubs.push({ name, years: m[2], appearances: m[3] })
         }
       }
+      // Pattern 2: {{Rugby league career statistics}} style
+      const rx2 = /club(\d+)\s*=\s*\[\[([^\]|]+)/g
+      while ((m = rx2.exec(wikitext)) !== null) {
+        const name = m[2].trim()
+        const idx  = m[1]
+        if (!seen.has(name)) {
+          seen.add(name)
+          const yearM = wikitext.match(new RegExp(`year${idx}\\s*=\\s*([\\d]{4}[–\\-][\\d]{2,4}|[\\d]{4})`))
+          const appM  = wikitext.match(new RegExp(`apps${idx}\\s*=\\s*([\\d]+)`))
+          clubs.push({ name, years: yearM?.[1] ?? '', appearances: appM?.[1] ?? '' })
+        }
+      }
 
-      const nrlClues = ['Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs','Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Warriors','Dolphins','NRL']
-      const slClues  = ['Super League','Wigan','Leeds','Warrington','Hull','Catalans','Castleford','Wakefield','Salford','Leigh','Huddersfield']
+      // Detect leagues
+      const nrlClues = ['Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs','Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Dolphins','NRL','National Rugby League']
+      const slClues  = ['Super League','Wigan Warriors','Leeds Rhinos','Warrington','Catalans','Castleford','Wakefield','Salford','Leigh','Huddersfield','Hull FC','Hull KR','St Helens','Toulouse']
       const leagues  = []
       if (slClues.some(k => wikitext.includes(k)))  leagues.push('SL')
       if (nrlClues.some(k => wikitext.includes(k))) leagues.push('NRL')
       if (leagues.length === 0) leagues.push('SL')
 
+      const cleanName = rawName.split('(')[0].replace(/\[\[|\]\]/g,'').trim()
+
       setForm(f => ({
         ...f,
-        name:        rawName.split('(')[0].trim(),
-        position:    position || f.position,
-        nation:      nation   || f.nation,
+        name:        cleanName || f.name,
+        position:    position  || f.position,
+        nation:      nation    || f.nation,
         nation_flag: nationFlag || f.nation_flag,
+        shirt_number: rawShirt || f.shirt_number,
         leagues,
         clubs: clubs.length > 0 ? clubs : f.clubs,
       }))
 
-      setWikiResults([])
-      setWikiQuery('')
-      setWikiSearched(false)
-      setMsg({ type:'ok', text:`Imported "${rawName.split('(')[0].trim()}" from Wikipedia. Review and save.` })
+      setWikiInput('')
+      setMsg({ type:'ok', text:`Imported "${cleanName}" from Wikipedia. Review the details below and save.` })
     } catch (err) {
-      setMsg({ type:'err', text:'Failed to import from Wikipedia.' })
+      setMsg({ type:'err', text:'Failed to import from Wikipedia: ' + err.message })
       console.error(err)
     } finally {
       setWikiLoading(false)
     }
   }
 
+  // ── Photo ──────────────────────────────────────────────────────────────
   function handlePhotoChange(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    setPhotoFile(file)
-    setPhotoPreview(URL.createObjectURL(file))
+    const file = e.target.files[0]; if (!file) return
+    setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file))
   }
 
   async function uploadPhoto(playerId) {
     if (!photoFile) return form.photo_path
-    const ext  = photoFile.name.split('.').pop()
+    const ext = photoFile.name.split('.').pop()
     const path = `${playerId}.${ext}`
     await supabase.storage.from('player-photos').upload(path, photoFile, { upsert: true })
     return path
   }
 
+  // ── Save player ────────────────────────────────────────────────────────
   async function savePlayer(e) {
-    e.preventDefault()
-    setSaving(true)
-    setMsg(null)
+    e.preventDefault(); setSaving(true); setMsg(null)
     try {
       const clubs = form.clubs.map(c => ({
         name: c.name, years: c.years, appearances: parseInt(c.appearances) || 0,
@@ -222,9 +294,7 @@ export default function Admin() {
       fetchPlayers()
     } catch (err) {
       setMsg({ type:'err', text: err.message })
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
 
   function editPlayer(p) {
@@ -241,10 +311,10 @@ export default function Admin() {
     window.scrollTo({ top:0, behavior:'smooth' })
   }
 
-  function addClub()           { setForm(f => ({ ...f, clubs: [...f.clubs, { name:'', years:'', appearances:'' }] })) }
-  function removeClub(i)       { setForm(f => ({ ...f, clubs: f.clubs.filter((_,idx) => idx !== i) })) }
-  function updateClub(i,k,v)   { setForm(f => { const clubs=[...f.clubs]; clubs[i]={...clubs[i],[k]:v}; return {...f,clubs} }) }
-  function toggleLeague(l)     { setForm(f => ({ ...f, leagues: f.leagues.includes(l) ? f.leagues.filter(x=>x!==l) : [...f.leagues,l] })) }
+  function addClub()         { setForm(f => ({ ...f, clubs: [...f.clubs, { name:'', years:'', appearances:'' }] })) }
+  function removeClub(i)     { setForm(f => ({ ...f, clubs: f.clubs.filter((_,idx) => idx !== i) })) }
+  function updateClub(i,k,v) { setForm(f => { const c=[...f.clubs]; c[i]={...c[i],[k]:v}; return {...f,clubs:c} }) }
+  function toggleLeague(l)   { setForm(f => ({ ...f, leagues: f.leagues.includes(l) ? f.leagues.filter(x=>x!==l) : [...f.leagues,l] })) }
 
   async function savePuzzle(e) {
     e.preventDefault(); setSaving(true); setMsg(null)
@@ -295,25 +365,33 @@ export default function Admin() {
 
               {/* Wikipedia import */}
               <div className="mb-6 p-4 rounded-lg" style={{ background:'rgba(200,169,110,0.06)', border:'1px solid rgba(200,169,110,0.15)' }}>
-                <label className="text-xs font-mono text-mud/70 uppercase tracking-widest block mb-2">Import from Wikipedia</label>
+                <label className="text-xs font-mono text-mud/70 uppercase tracking-widest block mb-1">
+                  Import from Wikipedia
+                </label>
+                <p className="text-xs text-chalk/30 mb-3">Paste a Wikipedia URL or type a player name</p>
                 <div className="flex gap-2">
-                  <input value={wikiQuery} onChange={e => setWikiQuery(e.target.value)}
-                    onKeyDown={e => e.key==='Enter' && searchWikipedia()}
-                    placeholder="Search player name…" className="input-vintage flex-1 text-sm" />
-                  <button type="button" onClick={searchWikipedia}
-                    disabled={wikiLoading || !wikiQuery.trim()}
+                  <input
+                    value={wikiInput}
+                    onChange={e => setWikiInput(e.target.value)}
+                    onKeyDown={e => e.key==='Enter' && handleWikiSearch()}
+                    placeholder="https://en.wikipedia.org/wiki/… or player name"
+                    className="input-vintage flex-1 text-sm"
+                  />
+                  <button type="button" onClick={handleWikiSearch}
+                    disabled={wikiLoading || !wikiInput.trim()}
                     className="btn-brass text-xs disabled:opacity-50 whitespace-nowrap">
-                    {wikiLoading ? 'Searching…' : 'Search Wikipedia'}
+                    {wikiLoading ? 'Loading…' : 'Import'}
                   </button>
                 </div>
+
                 {wikiSearched && wikiResults.length === 0 && (
-                  <p className="text-xs text-chalk/40 mt-2 font-mono">No results found.</p>
+                  <p className="text-xs text-chalk/40 mt-2 font-mono">No results. Try the full Wikipedia URL.</p>
                 )}
                 {wikiResults.length > 0 && (
                   <ul className="mt-2 divide-y divide-chalk/5">
                     {wikiResults.map(r => (
                       <li key={r.pageid}>
-                        <button type="button" onClick={() => importFromWikipedia(r.pageid, r.title)}
+                        <button type="button" onClick={() => importByPageId(r.pageid, r.title)}
                           className="w-full text-left px-3 py-2.5 text-sm text-chalk/80 hover:bg-mud/10 transition-colors">
                           <span className="font-medium">{r.title}</span>
                         </button>
@@ -323,6 +401,7 @@ export default function Admin() {
                 )}
               </div>
 
+              {/* Form */}
               <form onSubmit={savePlayer} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))}
@@ -337,9 +416,9 @@ export default function Admin() {
                     <option value="">Nation *</option>
                     {Object.keys(FLAG_MAP).map(n => <option key={n} value={n}>{FLAG_MAP[n]} {n}</option>)}
                   </select>
-                  <div className="flex items-center gap-2 px-3 py-2 rounded text-2xl"
+                  <div className="flex items-center gap-3 px-3 py-2 rounded"
                     style={{ background:'rgba(245,240,232,0.04)', border:'1px solid rgba(200,169,110,0.2)' }}>
-                    {form.nation_flag || '🏳️'}
+                    <span className="text-2xl">{form.nation_flag || '🏳️'}</span>
                     <span className="text-xs text-chalk/30 font-mono">auto-detected</span>
                   </div>
                   <input value={form.shirt_number} onChange={e => setForm(f=>({...f,shirt_number:e.target.value}))}
@@ -391,8 +470,7 @@ export default function Admin() {
                       <img src={photoPreview ?? `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/player-photos/${form.photo_path}`}
                         alt="Preview" className="w-16 h-16 object-cover rounded object-top" />
                     )}
-                    <input type="file" accept="image/*" onChange={handlePhotoChange}
-                      className="text-xs text-chalk/50" />
+                    <input type="file" accept="image/*" onChange={handlePhotoChange} className="text-xs text-chalk/50" />
                   </div>
                 </div>
 
@@ -438,19 +516,16 @@ export default function Admin() {
             <div className="card-base p-6">
               <h2 className="font-display text-lg text-chalk mb-1">Schedule a Puzzle</h2>
               <p className="text-xs text-chalk/40 font-mono mb-5">Auto-generate picks 5 random players not used in the last 30 days.</p>
-
               <div className="mb-4">
                 <label className="text-xs font-mono text-chalk/40 uppercase tracking-widest block mb-2">Date</label>
                 <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} className="input-vintage" />
               </div>
-
               <div className="flex gap-3 mb-6">
                 <button onClick={autoGeneratePuzzle} disabled={autoLoading} className="btn-brass disabled:opacity-50">
                   {autoLoading ? 'Generating…' : '✦ Auto-generate'}
                 </button>
                 <span className="text-xs text-chalk/30 font-mono self-center">or pick manually below</span>
               </div>
-
               <form onSubmit={savePuzzle} className="space-y-3">
                 {playerIds.map((id,i) => (
                   <div key={i} className="flex items-center gap-3">
