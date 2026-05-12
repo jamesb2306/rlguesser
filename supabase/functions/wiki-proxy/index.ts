@@ -19,7 +19,7 @@ serve(async (req) => {
     if (!title) return new Response(JSON.stringify({ error: 'No title provided' }), { status: 400, headers: corsHeaders })
 
     // Fetch the full rendered Wikipedia page HTML
-    const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&format=json&redirects=true`
+    const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text|wikitext&format=json&redirects=true`
     const res  = await fetch(url, {
       headers: { 'User-Agent': 'RLGuesser/1.0 (https://rlguesser.com)' }
     })

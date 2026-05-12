@@ -244,42 +244,35 @@ export default function Admin() {
   }
 
   async function importBySlug(slug) {
-    try {
-      const res = await fetch(
-        `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(slug)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*&redirects=true`
-      )
-      const data = await res.json()
-      const pages  = data.query.pages
-      const pageId = Object.keys(pages)[0]
-      if (pageId === '-1') {
-        setMsg({ type:'err', text:'Wikipedia page not found.' }); return
-      }
-      const resolvedTitle = pages[pageId].title
-      const wikitext = pages[pageId].revisions?.[0]?.slots?.main?.['*'] ?? ''
-      await importFromWikitext(pageId, resolvedTitle, wikitext)
-    } catch (err) {
-      setMsg({ type:'err', text:'Failed to fetch Wikipedia page: ' + err.message })
-    }
+    await importViaProxy(slug)
   }
 
-  async function importByPageId(pageId, title, wikitextOverride) {
+  async function importByPageId(pageId, title) {
     setWikiLoading(true)
     setWikiResults([])
     setWikiSearched(false)
+    await importViaProxy(title)
+    setWikiLoading(false)
+  }
+
+  // All imports go through our Supabase proxy which returns wikitext + HTML
+  async function importViaProxy(title) {
     try {
-      let wikitext = wikitextOverride
-      if (!wikitext) {
-        const res = await fetch(
-          `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`
-        )
-        const data = await res.json()
-        wikitext = data.query.pages[pageId]?.revisions?.[0]?.slots?.main?.['*'] ?? ''
-      }
-      await importFromWikitext(pageId, title, wikitext)
+      const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const res = await fetch(`${supabaseUrl}/functions/v1/wiki-proxy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnon}` },
+        body: JSON.stringify({ title })
+      })
+      const data = await res.json()
+      if (!data?.parse) { setMsg({ type:'err', text:'Wikipedia page not found.' }); return }
+      const wikitext = data.parse.wikitext?.['*'] ?? ''
+      const pageId   = data.parse.pageid
+      const resolvedTitle = data.parse.title
+      await importFromWikitext(pageId, resolvedTitle, wikitext)
     } catch (err) {
-      setMsg({ type:'err', text:'Failed to import: ' + err.message })
-    } finally {
-      setWikiLoading(false)
+      setMsg({ type:'err', text:'Failed to fetch from Wikipedia: ' + err.message })
     }
   }
 
