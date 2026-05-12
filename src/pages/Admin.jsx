@@ -68,51 +68,68 @@ function parseWikiInput(input) {
   return { type: 'search', value: input }
 }
 
-// Parse career club statistics from wikitext
-// Handles the common RL Wikipedia format:
-//   {| class="wikitable"
-//   ! Years !! Team !! ...
-//   |-
-//   | 1997–15 || [[Leeds Rhinos]] || 521 || ...
-function parseCareerClubs(wikitext) {
-  const clubs = []
-  const seen  = new Set()
+// Scrape career clubs from Wikipedia's parsed HTML page summary
+// Uses the REST API which returns clean HTML — much more reliable than wikitext parsing
+async function scrapeCareerClubs(pageTitle) {
+  try {
+    const res = await fetch(
+      `https://en.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(pageTitle)}`,
+      { headers: { 'Accept': 'text/html' } }
+    )
+    const html = await res.text()
+    const parser = new DOMParser()
+    const doc    = parser.parseFromString(html, 'text/html')
 
-  // Find all wikitables that look like career stats
-  // Pattern: row with a year range, a linked club, and a number
-  // Matches: | 1997–15 || [[Leeds Rhinos]] || 521
-  // Also:    | [[Leeds Rhinos]] || 1997–15 || 521
-  const patterns = [
-    // Years first: | 1997–15 || [[Club]] || 521
-    /\|\s*([\d]{4}[–\-][\d]{2,4})\s*\|\|?\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|?\s*([\d]+)/g,
-    // Club first: | [[Club]] || 1997–15 || 521
-    /\|\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|?\s*([\d]{4}[–\-][\d]{2,4})\s*\|\|?\s*([\d]+)/g,
-    // Single year: | 2005 || [[Club]] || 18
-    /\|\s*([\d]{4})\s*\|\|?\s*\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]\s*\|\|?\s*([\d]+)/g,
-  ]
+    const clubs = []
+    const seen  = new Set()
 
-  for (const rx of patterns) {
-    let m
-    while ((m = rx.exec(wikitext)) !== null) {
-      let years, name, apps
-      if (rx.source.startsWith('\\|\\s*\\[\\[')) {
-        // Club first pattern
-        name = m[1].trim(); years = m[2]; apps = m[3]
-      } else {
-        years = m[1]; name = m[2].trim(); apps = m[3]
+    // Rep team keywords to skip
+    const repTeams = /^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook Islands|Jamaica|Lancashire|Yorkshire|Cumbria|Total|Source)/i
+
+    // Find all wikitables on the page
+    const tables = doc.querySelectorAll('table')
+    for (const table of tables) {
+      const rows = table.querySelectorAll('tr')
+      if (rows.length < 2) continue
+
+      // Detect column positions from header row
+      const headers = [...rows[0].querySelectorAll('th')].map(th => th.textContent.trim().toLowerCase())
+      const yearCol  = headers.findIndex(h => h.includes('year') || h.includes('season'))
+      const teamCol  = headers.findIndex(h => h.includes('team') || h.includes('club'))
+      const appsCol  = headers.findIndex(h => h === 'pld' || h === 'apps' || h === 'app' || h.includes('game') || h.includes('match'))
+
+      // Skip tables that don't look like career stats
+      if (teamCol === -1 || appsCol === -1) continue
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].querySelectorAll('td')
+        if (cells.length < 2) continue
+
+        const teamCell  = cells[teamCol]
+        const yearCell  = yearCol >= 0 && yearCol < cells.length ? cells[yearCol] : null
+        const appsCell  = appsCol < cells.length ? cells[appsCol] : null
+
+        if (!teamCell || !appsCell) continue
+
+        const name  = teamCell.textContent.replace(/\(loan\)/gi,'').trim()
+        const years = yearCell ? yearCell.textContent.trim() : ''
+        const apps  = appsCell.textContent.trim().replace(/[^\d]/g,'')
+
+        if (!name || name.length < 2 || name.length > 60) continue
+        if (repTeams.test(name)) continue
+        if (seen.has(name)) continue
+        if (!apps || apps === '0') continue
+
+        seen.add(name)
+        clubs.push({ name, years, appearances: apps })
       }
-      // Skip non-club entries (representative teams, coaching stints etc.)
-      if (seen.has(name)) continue
-      if (/=|thumb|px|File:|Image:|Category:|Wikipedia/i.test(name)) continue
-      if (name.length < 2 || name.length > 60) continue
-      // Skip rep teams
-      if (/^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook|Jamaica|Lancashire|Yorkshire|Cumbria|Other)/.test(name)) continue
-      seen.add(name)
-      clubs.push({ name, years, appearances: apps })
     }
-  }
 
-  return clubs
+    return clubs
+  } catch (err) {
+    console.error('scrapeCareerClubs error:', err)
+    return []
+  }
 }
 
 export default function Admin() {
@@ -243,14 +260,13 @@ export default function Admin() {
   async function importFromWikitext(pageId, title, wikitext) {
     if (!wikitext) { setMsg({ type:'err', text:'Could not read Wikipedia content.' }); return }
 
-    // ── Extract infobox fields ───────────────────────────────────────────
+    // ── Extract infobox fields from wikitext ────────────────────────────
     const get = (key) => {
       const m = wikitext.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^\\n|}]+)`, 'i'))
       return m ? stripWiki(m[1]) : ''
     }
 
     const rawName  = stripWiki(get('name') || get('full_name') || title)
-    // Position: grab raw value and normalise — takes the first listed
     const rawPos   = get('position') || get('playing_position') || get('pos')
     const position = normalisePosition(rawPos)
     const rawShirt = get('number') || get('jersey_num') || get('shirt')
@@ -258,53 +274,46 @@ export default function Admin() {
     // ── Nation detection ────────────────────────────────────────────────
     let nation = ''
     const infoNation = get('nationalteam') || get('nationality') || get('birth_place') || ''
-    // Try infobox fields first, then scan full text
     for (const n of Object.keys(FLAG_MAP)) {
       if (infoNation.includes(n)) { nation = n; break }
     }
     if (!nation) {
       for (const n of Object.keys(FLAG_MAP)) {
-        if (wikitext.includes(n + ' national')) { nation = n; break }
-      }
-    }
-    if (!nation) {
-      // Last resort: birthplace in infobox
-      for (const n of Object.keys(FLAG_MAP)) {
-        if (infoNation.toLowerCase().includes(n.toLowerCase())) { nation = n; break }
+        if (wikitext.includes(n + ' national') || wikitext.includes('[[' + n + ']]')) { nation = n; break }
       }
     }
     const nationFlag = FLAG_MAP[nation] ?? ''
 
-    // ── Career clubs ─────────────────────────────────────────────────────
-    const clubs = parseCareerClubs(wikitext)
+    // ── Career clubs — scrape from parsed HTML ───────────────────────────
+    const clubs = await scrapeCareerClubs(title)
 
-    // ── League detection ─────────────────────────────────────────────────
+    // ── League detection from wikitext ───────────────────────────────────
     const nrlClues = ['Storm','Broncos','Roosters','Raiders','Knights','Cowboys','Bulldogs','Sea Eagles','Eels','Rabbitohs','Titans','Sharks','Panthers','Dolphins','NRL','National Rugby League']
-    const slClues  = ['Super League','Wigan Warriors','Leeds Rhinos','Warrington','Catalans','Castleford','Wakefield','Salford','Leigh','Huddersfield','Hull FC','Hull KR','St Helens','Toulouse']
+    const slClues  = ['Super League','Wigan Warriors','Leeds Rhinos','Warrington','Catalans','Castleford','Wakefield Trinity','Salford','Leigh','Huddersfield','Hull FC','Hull KR','St Helens','Toulouse']
     const leagues  = []
     if (slClues.some(k => wikitext.includes(k)))  leagues.push('SL')
     if (nrlClues.some(k => wikitext.includes(k))) leagues.push('NRL')
     if (leagues.length === 0) leagues.push('SL')
 
-    // ── Photo: fetch via Wikipedia image API ────────────────────────────
+    // ── Photo via Wikipedia image API ────────────────────────────────────
     let photoUrl = null
     try {
-      const imgRes = await fetch(
-        `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=pageimages&pithumbsize=400&format=json&origin=*`
+      const imgRes  = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=query&pageids=${pageId}&prop=pageimages&pithumbsize=500&format=json&origin=*`
       )
       const imgData = await imgRes.json()
       photoUrl = imgData.query?.pages?.[pageId]?.thumbnail?.source ?? null
-    } catch { /* photo is optional */ }
+    } catch { /* photo optional */ }
 
     const cleanName = rawName.split('(')[0].replace(/\[\[|\]\]/g,'').trim()
 
     setForm(f => ({
       ...f,
-      name:        cleanName || f.name,
-      position:    position  || f.position,
-      nation:      nation    || f.nation,
-      nation_flag: nationFlag || f.nation_flag,
-      shirt_number: rawShirt || f.shirt_number,
+      name:         cleanName  || f.name,
+      position:     position   || f.position,
+      nation:       nation     || f.nation,
+      nation_flag:  nationFlag || f.nation_flag,
+      shirt_number: rawShirt   || f.shirt_number,
       leagues,
       clubs: clubs.length > 0 ? clubs : f.clubs,
     }))
