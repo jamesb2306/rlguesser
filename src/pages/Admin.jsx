@@ -68,60 +68,79 @@ function parseWikiInput(input) {
   return { type: 'search', value: input }
 }
 
-// Scrape career clubs from Wikipedia's parsed HTML page summary
-// Uses the REST API which returns clean HTML — much more reliable than wikitext parsing
+// Parse career clubs using Wikipedia action=parse API (CORS-friendly)
+// Returns rendered HTML tables which we then parse with DOMParser
 async function scrapeCareerClubs(pageTitle) {
   try {
+    // Use action=parse to get rendered HTML — works cross-origin
+    // redirects=true ensures we follow redirect pages automatically
     const res = await fetch(
-      `https://en.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(pageTitle)}`,
-      { headers: { 'Accept': 'text/html' } }
+      `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&format=json&origin=*&redirects=true`
     )
-    const html = await res.text()
+    const data = await res.json()
+    const html = data?.parse?.text?.['*']
+    if (!html) return []
+
     const parser = new DOMParser()
     const doc    = parser.parseFromString(html, 'text/html')
 
-    const clubs = []
-    const seen  = new Set()
+    const clubs  = []
+    const seen   = new Set()
+    const repTeams = /^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook Islands|Jamaica|Lancashire|Yorkshire|Cumbria|Total|Source|Career|Club)/i
 
-    // Rep team keywords to skip
-    const repTeams = /^(England|Australia|New Zealand|Samoa|Tonga|Great Britain|Papua|France|Wales|Scotland|Ireland|Fiji|Lebanon|Cook Islands|Jamaica|Lancashire|Yorkshire|Cumbria|Total|Source)/i
-
-    // Find all wikitables on the page
-    const tables = doc.querySelectorAll('table')
+    const tables = doc.querySelectorAll('table.wikitable')
     for (const table of tables) {
       const rows = table.querySelectorAll('tr')
       if (rows.length < 2) continue
 
-      // Detect column positions from header row
-      const headers = [...rows[0].querySelectorAll('th')].map(th => th.textContent.trim().toLowerCase())
+      // Find header row — may not be first row
+      let headerRow = null
+      let headerIdx = 0
+      for (let i = 0; i < Math.min(3, rows.length); i++) {
+        const ths = rows[i].querySelectorAll('th')
+        if (ths.length >= 2) { headerRow = rows[i]; headerIdx = i; break }
+      }
+      if (!headerRow) continue
+
+      const headers  = [...headerRow.querySelectorAll('th')].map(th => th.textContent.trim().toLowerCase())
       const yearCol  = headers.findIndex(h => h.includes('year') || h.includes('season'))
       const teamCol  = headers.findIndex(h => h.includes('team') || h.includes('club'))
-      const appsCol  = headers.findIndex(h => h === 'pld' || h === 'apps' || h === 'app' || h.includes('game') || h.includes('match'))
+      // Pld is the games played column in RL Wikipedia tables
+      const appsCol  = headers.findIndex(h => h === 'pld' || h === 'apps' || h === 'gp' || h === 'app')
 
-      // Skip tables that don't look like career stats
-      if (teamCol === -1 || appsCol === -1) continue
+      if (teamCol === -1) continue
 
-      for (let i = 1; i < rows.length; i++) {
+      for (let i = headerIdx + 1; i < rows.length; i++) {
         const cells = rows[i].querySelectorAll('td')
         if (cells.length < 2) continue
 
-        const teamCell  = cells[teamCol]
-        const yearCell  = yearCol >= 0 && yearCol < cells.length ? cells[yearCol] : null
-        const appsCell  = appsCol < cells.length ? cells[appsCol] : null
+        // Get team name — strip footnotes and loan markers
+        const teamCell = teamCol < cells.length ? cells[teamCol] : null
+        if (!teamCell) continue
+        const name = teamCell.textContent
+          .replace(/\[.*?\]/g, '')
+          .replace(/\(loan\)/gi, '')
+          .replace(/→/g, '')
+          .trim()
 
-        if (!teamCell || !appsCell) continue
+        const yearCell = yearCol >= 0 && yearCol < cells.length ? cells[yearCol] : null
+        const years    = yearCell ? yearCell.textContent.replace(/\[.*?\]/g,'').trim() : ''
 
-        const name  = teamCell.textContent.replace(/\(loan\)/gi,'').trim()
-        const years = yearCell ? yearCell.textContent.trim() : ''
-        const apps  = appsCell.textContent.trim().replace(/[^\d]/g,'')
+        // Apps: prefer explicit apps col, otherwise use Pld
+        let apps = ''
+        if (appsCol >= 0 && appsCol < cells.length) {
+          apps = cells[appsCol].textContent.replace(/[^\d]/g, '')
+        } else if (cells.length > teamCol + 1) {
+          // Try the cell right after team col
+          apps = cells[teamCol + 1].textContent.replace(/[^\d]/g, '')
+        }
 
-        if (!name || name.length < 2 || name.length > 60) continue
+        if (!name || name.length < 2 || name.length > 80) continue
         if (repTeams.test(name)) continue
         if (seen.has(name)) continue
-        if (!apps || apps === '0') continue
 
         seen.add(name)
-        clubs.push({ name, years, appearances: apps })
+        clubs.push({ name, years, appearances: apps || '0' })
       }
     }
 
@@ -221,7 +240,7 @@ export default function Admin() {
   async function importBySlug(slug) {
     try {
       const res = await fetch(
-        `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(slug)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*`
+        `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(slug)}&prop=revisions&rvprop=content&rvslots=main&format=json&origin=*&redirects=true`
       )
       const data = await res.json()
       const pages  = data.query.pages
@@ -229,8 +248,9 @@ export default function Admin() {
       if (pageId === '-1') {
         setMsg({ type:'err', text:'Wikipedia page not found.' }); return
       }
+      const resolvedTitle = pages[pageId].title
       const wikitext = pages[pageId].revisions?.[0]?.slots?.main?.['*'] ?? ''
-      await importFromWikitext(pageId, pages[pageId].title, wikitext)
+      await importFromWikitext(pageId, resolvedTitle, wikitext)
     } catch (err) {
       setMsg({ type:'err', text:'Failed to fetch Wikipedia page: ' + err.message })
     }
